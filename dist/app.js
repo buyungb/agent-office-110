@@ -172,21 +172,21 @@ agents.forEach((a,i)=>{a.model=character(a.x,a.z,a.color,i);a.model.g.rotation.y
 const miner=character(7,23,0xd1a12c);box(miner.head,0,.28,0,.58,.16,.55,0xf4cc39);box(miner.head,0,.24,.3,.16,.13,.09,0xfff6ba);
 const buyung=character(12.2,25,0x30424d);box(buyung.head,0,.04,.215,.4,.11,.035,0x1c2630);
 const worshippers=[
-  {name:'Buyung',role:'CEO',position:'Imam',x:14,z:-6.35,color:0xf2eee0,delay:0},
-  {name:'Muhammad',role:'COO',position:'Makmum',x:12.95,z:-3.55,color:0x82b4a5,delay:1.05},
-  {name:'Anggit',role:'CTO',position:'Makmum',x:15.05,z:-3.55,color:0x8baac7,delay:1.05},
+  {name:'Buyung',emoji:'😎',role:'CEO',position:'Imam',room:'mushola',job:'🕌 Memimpin shalat berjamaah di mushalla',x:14,z:-6.35,color:0xf2eee0,delay:0},
+  {name:'Muhammad',emoji:'🧭',role:'COO',position:'Makmum',room:'mushola',job:'🤲 Shalat berjamaah sebagai makmum',x:12.95,z:-3.55,color:0x82b4a5,delay:1.05},
+  {name:'Anggit',emoji:'💻',role:'CTO',position:'Makmum',room:'mushola',job:'🤲 Shalat berjamaah sebagai makmum',x:15.05,z:-3.55,color:0x8baac7,delay:1.05},
 ];
 for(const person of worshippers){person.model=createPrayerCharacter(person.color);person.model.root.position.set(person.x,.455,person.z);person.model.root.rotation.y=Math.PI;scene.add(person.model.root);}
 
 // DOM labels track real world positions and remain accessible buttons.
 const tracked=[];
-function label(text,x,y,z,cls,roomId,subtitle=''){const el=document.createElement('button');el.className=`world-label room-label ${cls}`;const b=document.createElement('b');b.textContent=text;el.append(b);if(subtitle){const small=document.createElement('small');small.textContent=subtitle;el.append(small);}el.addEventListener('click',()=>focusRoom(roomId));$('#labels').append(el);tracked.push({el,point:new THREE.Vector3(x,y,z),room:roomId});return el;}
+function label(text,x,y,z,cls,roomId,subtitle='',onClick=()=>focusRoom(roomId)){const el=document.createElement('button');el.className=`world-label room-label ${cls}`;const b=document.createElement('b');b.textContent=text;el.append(b);if(subtitle){const small=document.createElement('small');small.textContent=subtitle;el.append(small);}el.addEventListener('click',onClick);$('#labels').append(el);tracked.push({el,point:new THREE.Vector3(x,y,z),room:roomId});return el;}
 for(const r of rooms.slice(1)){let cls=r.id;if(r.id==='mushola')cls='religion';label(`${r.icon} ${r.label||r.name}`,r.x,3.3,r.z-(r.d||8)/2,cls,r.id,['trading','meeting','admin'].includes(r.id)?'● online · CPU 4% · RAM 54%':'');}
 label('🅿️ PARKIR KANTOR',-25,1,9,'','all');label('🏠 PINTU BELAKANG',-.8,1,-11,'farm','house');label('🚪 PINTU KEBUN',-2,1,12,'farm','farm');
 label('🤖 EA V3.01',7,2.8,23,'mine','mine');label('😎 Buyung',12.2,2.5,25,'mine','mine');
 for(const person of worshippers){
-  const el=label(`${person.name} · ${person.role}`,person.x,2.7,person.z,'religion prayer-label','mushola',person.position);
-  el.dataset.person=person.name;el.setAttribute('aria-label',`${person.name}, ${person.role}, ${person.position}`);person.label=el;
+  const el=label(`${person.name} · ${person.role}`,person.x,2.7,person.z,'religion prayer-label','mushola',person.position,()=>showAgent(person));
+  el.dataset.person=person.name;el.setAttribute('aria-label',`${person.name}, ${person.role}, ${person.position}, lihat detail`);person.label=el;
 }
 for(const a of agents){const el=document.createElement('button');el.className='world-label agent-label';el.style.setProperty('--agent-color',`#${a.color.toString(16).padStart(6,'0')}`);el.setAttribute('aria-label',`${a.name}, ${a.role}, lihat detail`);el.innerHTML=`<span class="speech ${a.status==='idle'?'zz':''}">${a.status==='idle'?'zZ':a.job}</span><span class="agent-tag"><span class="name"><i class="dot ${a.status}"></i>${a.emoji} ${a.name}</span><span class="agent-role">${a.role}</span></span>`;el.addEventListener('click',()=>showAgent(a));$('#labels').append(el);a.el=el;tracked.push({el,point:new THREE.Vector3(a.x,2.2,a.z),room:a.room,agent:true});}
 let selected='all',demo=false,transition=null,modalAgent=null;
@@ -209,7 +209,7 @@ $('#reset').onclick=()=>focusRoom('all');
 document.querySelectorAll('[data-focus]').forEach(b=>b.onclick=()=>focusRoom(b.dataset.focus));
 function updateDemo(){for(const a of agents){a.el.querySelector('.dot').className=`dot ${demo?'working':a.status}`;a.el.querySelector('.speech').className=`speech ${!demo&&a.status==='idle'?'zz':''}`;a.el.querySelector('.speech').textContent=demo?a.job:a.status==='idle'?'zZ':a.job;}$('#activeCount').textContent=demo?'11 / 11':'0 / 11';$('#demo').setAttribute('aria-pressed',demo);if($('#agentDialog').open&&modalAgent)fillModal(modalAgent);}
 $('#demo').onclick=()=>{demo=!demo;updateDemo();};
-function fillModal(a){$('#modalEmoji').textContent=a.emoji;$('#modalName').textContent=a.name;$('#modalRole').textContent=a.role;const status=demo?'Sedang kerja':a.status==='idle'?'Santai':'Baru selesai (ngopi)';$('#modalDetails').innerHTML=`<dt>Status</dt><dd>${status}</dd><dt>Ruangan</dt><dd>${byId[a.room].name}</dd><dt>Framework</dt><dd>${a.name==='Raka'?'Hermes':'AI Agent'}</dd><dt>Koneksi</dt><dd>Simulasi lokal</dd>`;$('#modalActivity').textContent=demo?a.job:a.status==='idle'?'☕ Siaga, menunggu tugas berikutnya.':a.job;}
+function fillModal(a){$('#modalEmoji').textContent=a.emoji;$('#modalName').textContent=a.name;$('#modalRole').textContent=a.role;if(a.position){$('#modalDetails').innerHTML=`<dt>Jabatan</dt><dd>${a.role}</dd><dt>Posisi</dt><dd>${a.position}</dd><dt>Ruangan</dt><dd>${byId[a.room].name}</dd><dt>Status</dt><dd>Sedang shalat</dd>`;$('#modalActivity').textContent=a.job;return;}const status=demo?'Sedang kerja':a.status==='idle'?'Santai':'Baru selesai (ngopi)';$('#modalDetails').innerHTML=`<dt>Status</dt><dd>${status}</dd><dt>Ruangan</dt><dd>${byId[a.room].name}</dd><dt>Framework</dt><dd>${a.name==='Raka'?'Hermes':'AI Agent'}</dd><dt>Koneksi</dt><dd>Simulasi lokal</dd>`;$('#modalActivity').textContent=demo?a.job:a.status==='idle'?'☕ Siaga, menunggu tugas berikutnya.':a.job;}
 function showAgent(a){modalAgent=a;fillModal(a);$('#agentDialog').showModal();}
 $('#closeDialog').onclick=()=>$('#agentDialog').close();
 $('#agentDialog').addEventListener('click',e=>{if(e.target===$('#agentDialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
