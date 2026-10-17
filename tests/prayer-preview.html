@@ -1,0 +1,23 @@
+<!doctype html><html lang="id"><meta charset="utf-8"><title>Prayer posture QA</title>
+<style>body{margin:0;background:#d8e1e3;font:15px system-ui}header{position:fixed;top:12px;left:12px;z-index:3;background:white;padding:14px;border-radius:10px}canvas{display:block}.names{position:fixed;bottom:20px;width:100%;display:flex;justify-content:space-evenly}select{padding:8px}a{margin-left:12px}</style>
+<script type="importmap">{"imports":{"three":"/dist/vendor/three.module.js"}}</script>
+<header>Posture QA <select id="pose"><option value="all">All postures</option><option>qiyam</option><option>takbir</option><option>ruku</option><option>sujud</option><option>sit</option><option>tashahhud</option><option>salamRight</option><option>salamLeft</option><option value="animation">Animation</option></select><a href="/dist/">Office</a><span id="phase"></span></header>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from '/dist/vendor/OrbitControls.js';
+import {createPrayerCharacter,POSES,samplePrayer,PRAYER_DURATION,PRAYER_STEPS} from '/dist/prayer.js';
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xd8e1e3);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;document.body.append(renderer.domElement);
+const camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.1,100);camera.position.set(9,5.5,10);
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.65,0);controls.update();
+scene.add(new THREE.HemisphereLight(0xffffff,0x777777,2));const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(-4,10,3);sun.castShadow=true;scene.add(sun);
+const ground=new THREE.Mesh(new THREE.BoxGeometry(20,.04,10),new THREE.MeshLambertMaterial({color:0x608f72}));ground.position.y=-.022;ground.receiveShadow=true;scene.add(ground);
+const rigs=['qiyam','ruku','sujud','sit','tashahhud'].map((key,i)=>{const rig=createPrayerCharacter(0xe8e0c9);rig.root.position.x=(i-2)*2;rig.apply(POSES[key]);scene.add(rig.root);return {rig,key};});
+const select=document.querySelector('#pose');let start=performance.now();select.onchange=()=>{start=performance.now();rigs.forEach(({rig,key},i)=>{rig.root.visible=select.value==='all'||i===2;rig.apply(POSES[select.value]||POSES[key]);});};
+function frame(now){requestAnimationFrame(frame);if(select.value==='animation'){const state=samplePrayer(((now-start)/1000)%PRAYER_DURATION);rigs[2].rig.apply(state.pose);document.querySelector('#phase').textContent=state.label;}renderer.render(scene,camera);}requestAnimationFrame(frame);
+// Readable geometric assertions use the actual mesh transforms, not pixels.
+const errors=[];if(POSES.ruku.bend!==Math.PI/2)errors.push('Ruku is not horizontal');
+for(const n of [1,2]){const seq=PRAYER_STEPS.filter(s=>s.rakaat===n).map(s=>s.id);if(seq.indexOf(`sujud-first-${n}`)>seq.indexOf(`sit-${n}`)||seq.indexOf(`sit-${n}`)>seq.indexOf(`sujud-second-${n}`))errors.push('Sujud order '+n);}
+for(const {rig,key} of rigs){rig.root.updateMatrixWorld(true);let minY=Infinity;rig.root.traverse(o=>{if(o.isMesh){o.geometry.computeBoundingBox();const b=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);minY=Math.min(minY,b.min.y);}});if(minY<-.02)errors.push(key+' penetrates mat: '+minY);}
+document.body.dataset.tests=errors.length?'failed':'passed';document.body.dataset.errors=JSON.stringify(errors);
+</script></html>

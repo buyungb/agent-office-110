@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#293242">
+  <meta name="description" content="Explore an interactive 3D AI agent office, with furnished rooms and animated agents.">
+  <title>buyung.io AI Agent Office</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%23293242'/%3E%3Ctext x='24' y='34' text-anchor='middle' font-size='32' fill='white'%3Eb%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+  <main id="stage" aria-label="Kampus kantor 3D. Seret untuk menggeser, klik kanan seret untuk memutar, scroll untuk zoom." tabindex="0"></main>
+  <div id="labels"></div>
+  <header class="hud">
+    <div class="top-row">
+      <div class="panel brand"><span class="brand-mark" aria-hidden="true">b<span>io</span></span><h1>buyung.io AI AGENT OFFICE</h1></div>
+      <section class="panel stats" aria-label="Statistik kantor, data contoh">
+        <div class="stat"><small>Agent aktif</small><b id="activeCount">0 / 11</b></div>
+        <button class="stat" data-focus="farm"><small>🌾 PnL Soros</small><b class="positive">+30.5%</b></button>
+        <button class="stat" data-focus="mine"><small>⛏ Tambang XAU</small><b class="negative">-13.1%</b></button>
+        <div class="stat"><small>Sesi 24 jam</small><b>20</b></div>
+        <div class="stat"><small>VPS online</small><b>3 / 3</b></div>
+      </section>
+    </div>
+    <nav class="panel tabs" id="tabs" aria-label="Pilih ruangan"></nav>
+    <div class="toolbar"><button class="panel demo" id="demo" aria-pressed="false" title="Tampilkan semua agent bekerja">🎬 Demo</button></div>
+  </header>
+  <div class="camera-tools panel" aria-label="Kontrol kamera"><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="rotate" aria-label="Putar kamera">↻</button><button id="reset" aria-label="Reset kamera">⌂</button></div>
+  <footer class="panel legend"><span><i class="dot working"></i>Sedang kerja</span><span><i class="dot recent"></i>Baru selesai (ngopi)</span><span><i class="dot idle"></i>Santai</span><span><i class="dot offline"></i>Offline</span><span class="hint">· seret (kiri/tengah) = geser · klik kanan seret = putar · scroll = zoom · panah keyboard = geser · klik agent = detail</span></footer>
+  <div class="panel data-note"><span class="tiny-dot"></span>Data contoh · simulasi lokal</div>
+  <aside class="panel prayer-status" id="prayerStatus" hidden><b>🕌 Salat berjamaah</b><span id="prayerPhase">Persiapan</span><small>Buyung · Imam &nbsp; | &nbsp; Muhammad & Anggit · Makmum</small></aside>
+  <div id="loading"><span class="loader"></span><b>Membangun kantor…</b><small>Menyiapkan ruangan dan agent</small></div>
+  <div id="error" hidden><h2>Kantor 3D belum dapat dibuka</h2><p id="errorMessage"></p><button onclick="location.reload()">Coba lagi</button></div>
+  <dialog id="agentDialog" aria-labelledby="modalName">
+    <div class="modal-head"><span id="modalEmoji"></span><div><h2 id="modalName"></h2><p id="modalRole"></p></div><button id="closeDialog" aria-label="Tutup detail">×</button></div>
+    <div class="modal-body"><dl id="modalDetails"></dl><div class="activity"><small>AKTIVITAS TERAKHIR</small><p id="modalActivity"></p></div><button class="go-to" id="goToAgent">Lihat di ruangan →</button><small class="sample-note">Data demonstrasi — tidak terhubung ke VPS atau akun trading.</small></div>
+  </dialog>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
