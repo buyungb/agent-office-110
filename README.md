@@ -23,3 +23,7 @@ The displayed metrics and agent activity are sample data, not a connection to th
 Buyung (CEO) leads a two-rakaat prayer, with Muhammad (COO) and Anggit (CTO) in a row behind him. Makmum motions begin 1.05 seconds after the imam. Jointed models perform takbir, folded-hand standing, flat-back rukuk, upright iktidal, two sujud per rakaat, iftirasy, final tawarruk, and right/left salam. The animation has quiet holds in every posture and does not change with office Demo mode.
 
 Pose and sequence reference: https://tarjih.muhammadiyah.or.id/cara-duduk-tahiyat-pada-shalat-dua-rakaat . This is a stylized visual animation, not a recitation or instructional prayer timer.
+
+## Deploy (Dokploy)
+
+Create a **Docker Compose** service in Dokploy pointing at this repo (compose path `./docker-compose.yml`). In the service's **Domains** tab, add your domain with service `web` and container port `80`. The image is nginx serving `dist/`, with a `/healthz` endpoint.

@@ -1,0 +1,10 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No published ports: Dokploy's Traefik routes to the container on port 80.
+    # Add the domain in Dokploy (Domains tab → service "web", port 80).
+    expose:
+      - "80"
