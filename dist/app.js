@@ -216,6 +216,14 @@ function showAgent(a){modalAgent=a;fillModal(a);$('#agentDialog').showModal();}
 $('#closeDialog').onclick=()=>$('#agentDialog').close();
 $('#agentDialog').addEventListener('click',e=>{if(e.target===$('#agentDialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
 $('#goToAgent').onclick=()=>{$('#agentDialog').close();focusRoom(modalAgent.room);};
+// Tapping a character's body (not only its label) opens its detail; drags stay camera pans.
+const raycaster=new THREE.Raycaster(),tapPoint=new THREE.Vector2();
+const tappable=[...agents.map(a=>[a.model.g,a]),...worshippers.map(p=>[p.model.root,p])];
+let tapStart=null;
+renderer.domElement.addEventListener('pointerdown',e=>{tapStart=e.isPrimary?{x:e.clientX,y:e.clientY,t:performance.now()}:null;});
+renderer.domElement.addEventListener('pointerup',e=>{const s=tapStart;tapStart=null;if(!s||!e.isPrimary||Math.hypot(e.clientX-s.x,e.clientY-s.y)>8||performance.now()-s.t>500)return;
+  const r=renderer.domElement.getBoundingClientRect();tapPoint.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(tapPoint,camera);
+  const hit=raycaster.intersectObjects(tappable.map(t=>t[0]),true)[0];for(let o=hit?.object;o;o=o.parent){const t=tappable.find(t=>t[0]===o);if(t){showAgent(t[1]);return;}}});
 const projected=new THREE.Vector3();let lastShadow=0,lastFrame=null,prayerTime=0,lastPrayerPhase='';
 function frame(now){requestAnimationFrame(frame);if(document.hidden)return;
   // Do not skip postures when returning from a background tab.
