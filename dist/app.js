@@ -192,7 +192,9 @@ for(const a of agents){const el=document.createElement('button');el.className='w
 let selected='all',demo=false,transition=null,modalAgent=null;
 for(const r of rooms){const b=document.createElement('button');b.className='tab';b.dataset.room=r.id;b.setAttribute('aria-pressed',r.id==='all');b.innerHTML=`<span class="ic">${r.icon}</span>${r.name}`;b.addEventListener('click',()=>focusRoom(r.id));$('#tabs').append(b);}
 function baseSpan(){return innerWidth<760?86:66;}
-function resize(){const w=innerWidth,h=innerHeight,aspect=w/h;const span=baseSpan();camera.left=-span*aspect/2;camera.right=span*aspect/2;camera.top=span/2;camera.bottom=-span/2;camera.updateProjectionMatrix();renderer.setSize(w,h);if(selected==='all')focusRoom('all',true);}
+// Canvas and labels share the stage's measured size; innerWidth/innerHeight drift on mobile (address bar, rotation).
+const view={w:0,h:0};
+function resize(){const rect=$('#stage').getBoundingClientRect();const w=Math.max(1,Math.round(rect.width)),h=Math.max(1,Math.round(rect.height)),aspect=w/h;if(w===view.w&&h===view.h)return;view.w=w;view.h=h;const span=baseSpan();camera.left=-span*aspect/2;camera.right=span*aspect/2;camera.top=span/2;camera.bottom=-span/2;camera.updateProjectionMatrix();renderer.setSize(w,h,false);if(selected==='all')focusRoom('all',true);}
 function focusRoom(id,immediate=false){const r=byId[id];if(!r)return;selected=id;document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-pressed',b.dataset.room===id));const mobile=innerWidth<760;const span=id==='all'?baseSpan():r.span*(mobile?1.65:1);const zoom=id==='all'?(mobile?.72:.92):baseSpan()/span;const target=new THREE.Vector3(r.x,id==='all'?8:2,r.z);const offset=defaultOffset.clone();const pos=target.clone().add(offset);
   transition={from:camera.position.clone(),to:pos,start:controls.target.clone(),target,zoomFrom:camera.zoom,zoomTo:zoom,time:performance.now(),duration:750};
   if(immediate){camera.position.copy(pos);controls.target.copy(target);camera.zoom=zoom;camera.updateProjectionMatrix();transition=null;controls.update();}
@@ -200,7 +202,7 @@ function focusRoom(id,immediate=false){const r=byId[id];if(!r)return;selected=id
 }
 controls.addEventListener('start',()=>{transition=null;});
 $('#stage').addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('resize',resize);
+addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,250));window.visualViewport?.addEventListener('resize',resize);if(window.ResizeObserver)new ResizeObserver(resize).observe($('#stage'));
 addEventListener('keydown',e=>{if($('#agentDialog').open||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();transition=null;const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0),up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);const delta=(e.key==='ArrowLeft'?right.multiplyScalar(-1):e.key==='ArrowRight'?right:e.key==='ArrowDown'?up.multiplyScalar(-1):up).multiplyScalar(1.5/camera.zoom);camera.position.add(delta);controls.target.add(delta);});
 $('#zoomIn').onclick=()=>{transition=null;camera.zoom=Math.min(8,camera.zoom*1.25);camera.updateProjectionMatrix();};
 $('#zoomOut').onclick=()=>{transition=null;camera.zoom=Math.max(.45,camera.zoom/1.25);camera.updateProjectionMatrix();};
@@ -227,7 +229,7 @@ function frame(now){requestAnimationFrame(frame);if(document.hidden)return;
   controls.update();
   const overview=camera.zoom<1.8;$('#labels').classList.toggle('overview',overview);
   for(let i=0;i<agents.length;i++){const a=agents[i],t=now*.001+i;a.model.head.rotation.y=Math.sin(t*.65)*.15;a.model.arms.forEach((arm,j)=>{arm.rotation.x=demo?-.7+Math.sin(t*5+j)*.16:Math.sin(t*.8+j)*.035;});a.model.g.position.y=.3+(demo?Math.sin(t*2)*.025:0);}
-  for(const l of tracked){projected.copy(l.point).project(camera);const x=(projected.x*.5+.5)*innerWidth,y=(-projected.y*.5+.5)*innerHeight;const outside=projected.z>1||x<-200||x>innerWidth+200||y<-100||y>innerHeight+100;l.el.hidden=outside;l.el.style.display=outside?'none':'';if(!outside){l.el.style.transform=`translate(-50%,-100%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;l.el.style.zIndex=String(Math.round((1-projected.z)*1000)+(l.agent?2:0));l.el.classList.toggle('faded',selected!=='all'&&l.room!==selected);}}
+  for(const l of tracked){projected.copy(l.point).project(camera);const x=(projected.x*.5+.5)*view.w,y=(-projected.y*.5+.5)*view.h;const outside=projected.z>1||x<-200||x>view.w+200||y<-100||y>view.h+100;l.el.hidden=outside;l.el.style.display=outside?'none':'';if(!outside){l.el.style.transform=`translate(-50%,-100%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;l.el.style.zIndex=String(Math.round((1-projected.z)*1000)+(l.agent?2:0));l.el.classList.toggle('faded',selected!=='all'&&l.room!==selected);}}
   if(now-lastShadow>1000){renderer.shadowMap.needsUpdate=true;lastShadow=now;}renderer.render(scene,camera);
 }
 resize();renderer.shadowMap.needsUpdate=true;renderer.render(scene,camera);$('#loading').remove();$('#stage').dataset.ready='true';requestAnimationFrame(frame);
