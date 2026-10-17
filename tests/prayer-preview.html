@@ -5,7 +5,7 @@
 <script type="module">
 import * as THREE from 'three';
 import {OrbitControls} from '/dist/vendor/OrbitControls.js';
-import {createPrayerCharacter,POSES,samplePrayer,PRAYER_DURATION,PRAYER_STEPS} from '/dist/prayer.js';
+import {createPrayerCharacter,POSES,samplePrayer,PRAYER_DURATION,PRAYER_STEPS,buildPrayer} from '/dist/prayer.js';
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xd8e1e3);
 const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;document.body.append(renderer.domElement);
 const camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.1,100);camera.position.set(9,5.5,10);
@@ -18,6 +18,8 @@ function frame(now){requestAnimationFrame(frame);if(select.value==='animation'){
 // Readable geometric assertions use the actual mesh transforms, not pixels.
 const errors=[];if(POSES.ruku.bend!==Math.PI/2)errors.push('Ruku is not horizontal');
 for(const n of [1,2]){const seq=PRAYER_STEPS.filter(s=>s.rakaat===n).map(s=>s.id);if(seq.indexOf(`sujud-first-${n}`)>seq.indexOf(`sit-${n}`)||seq.indexOf(`sit-${n}`)>seq.indexOf(`sujud-second-${n}`))errors.push('Sujud order '+n);}
-for(const {rig,key} of rigs){rig.root.updateMatrixWorld(true);let minY=Infinity;rig.root.traverse(o=>{if(o.isMesh){o.geometry.computeBoundingBox();const b=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);minY=Math.min(minY,b.min.y);}});if(minY<-.02)errors.push(key+' penetrates mat: '+minY);}
+for(const {rig,key} of rigs){rig.root.updateMatrixWorld(true);let minY=Infinity;rig.root.traverseVisible(o=>{if(o.isMesh){o.geometry.computeBoundingBox();const b=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);minY=Math.min(minY,b.min.y);}});if(minY<-.02)errors.push(key+' penetrates mat: '+minY);}
+const four=buildPrayer(4).steps.map(s=>s.id),at=id=>four.indexOf(id);
+if(!(at('sujud-second-2')<at('tashahhud-awal')&&at('tashahhud-awal')<at('qiyam-3')&&at('sujud-second-4')<at('tashahhud')&&at('qiyam-4')>0))errors.push('4-rakaat order');
 document.body.dataset.tests=errors.length?'failed':'passed';document.body.dataset.errors=JSON.stringify(errors);
 </script></html>
