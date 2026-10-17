@@ -11,7 +11,7 @@ const rooms = [
   {id:'admin',icon:'🏢',name:'Administration Room',x:-13,z:5,w:11,d:10,span:19},
   {id:'lobby',icon:'🛋️',name:'Lobi',label:'LOBBY OFFICE',x:-1,z:5,w:12,d:10,span:20},
   {id:'medical',icon:'🏥',name:'Medis',label:'RUANG MEDIS',x:8,z:-5,w:5,d:9,span:14},
-  {id:'house',icon:'🏠',name:'Rumah Bang Jilly',label:'RUMAH BANG JILLY',x:1,z:-18,w:10,d:8,span:18},
+  {id:'house',icon:'🏠',name:'Rumah Bang Buyung',label:'RUMAH BANG BUYUNG',x:1,z:-18,w:10,d:8,span:18},
   {id:'gym',icon:'🏋️',name:'Gym',label:'GYM & RUANG MAKAN',x:-10,z:-18,w:10,d:8,span:18},
   {id:'mushola',icon:'🕌',name:'Mushalla',label:'MUSHALLA',x:14,z:-5,w:6,d:9,span:12},
   {id:'sport',icon:'🏀',name:'Sport Hall',label:'SPORT HALL',x:19,z:6,w:25,d:11,span:28},
@@ -170,7 +170,7 @@ billboard(14,17,'PANTAU BERSAMA','XAUUSD  ·  TRADING JOURNAL',6);
 function character(x,z,color,index=0){const g=group(x,.3,z);box(g,-.14,.27,0,.2,.54,.25,0x253044);box(g,.14,.27,0,.2,.54,.25,0x253044);box(g,-.14,.045,.08,.23,.12,.38,0x252832);box(g,.14,.045,.08,.23,.12,.38,0x252832);box(g,0,.76,0,.55,.53,.32,color);const head=group(0,1.22,0,g);box(head,0,0,0,.43,.42,.4,0xddad7f);box(head,0,.18,-.03,.46,.14,.43,index%3?0x302d29:0x634534);box(head,0,.05,-.2,.45,.32,.07,0x302d29);for(const xx of [-.1,.1])box(head,xx,.015,.204,.047,.05,.015,0x272528,false);const arms=[];for(const s of [-1,1]){const arm=group(s*.36,.93,0,g);box(arm,0,-.16,0,.17,.35,.23,color);box(arm,0,-.37,0,.16,.14,.18,0xddad7f);arms.push(arm);}return {g,head,arms};}
 agents.forEach((a,i)=>{a.model=character(a.x,a.z,a.color,i);a.model.g.rotation.y=Math.PI;});
 const miner=character(7,23,0xd1a12c);box(miner.head,0,.28,0,.58,.16,.55,0xf4cc39);box(miner.head,0,.24,.3,.16,.13,.09,0xfff6ba);
-const jilly=character(12.2,25,0x30424d);box(jilly.head,0,.04,.215,.4,.11,.035,0x1c2630);
+const buyung=character(12.2,25,0x30424d);box(buyung.head,0,.04,.215,.4,.11,.035,0x1c2630);
 const worshippers=[
   {name:'Buyung',role:'CEO',position:'Imam',x:14,z:-6.35,color:0xf2eee0,delay:0},
   {name:'Muhammad',role:'COO',position:'Makmum',x:12.95,z:-3.55,color:0x82b4a5,delay:1.05},
@@ -183,7 +183,7 @@ const tracked=[];
 function label(text,x,y,z,cls,roomId,subtitle=''){const el=document.createElement('button');el.className=`world-label room-label ${cls}`;const b=document.createElement('b');b.textContent=text;el.append(b);if(subtitle){const small=document.createElement('small');small.textContent=subtitle;el.append(small);}el.addEventListener('click',()=>focusRoom(roomId));$('#labels').append(el);tracked.push({el,point:new THREE.Vector3(x,y,z),room:roomId});return el;}
 for(const r of rooms.slice(1)){let cls=r.id;if(r.id==='mushola')cls='religion';label(`${r.icon} ${r.label||r.name}`,r.x,3.3,r.z-(r.d||8)/2,cls,r.id,['trading','meeting','admin'].includes(r.id)?'● online · CPU 4% · RAM 54%':'');}
 label('🅿️ PARKIR KANTOR',-25,1,9,'','all');label('🏠 PINTU BELAKANG',-.8,1,-11,'farm','house');label('🚪 PINTU KEBUN',-2,1,12,'farm','farm');
-label('🤖 EA V3.01',7,2.8,23,'mine','mine');label('😎 Jilly',12.2,2.5,25,'mine','mine');
+label('🤖 EA V3.01',7,2.8,23,'mine','mine');label('😎 Buyung',12.2,2.5,25,'mine','mine');
 for(const person of worshippers){
   const el=label(`${person.name} · ${person.role}`,person.x,2.7,person.z,'religion prayer-label','mushola',person.position);
   el.dataset.person=person.name;el.setAttribute('aria-label',`${person.name}, ${person.role}, ${person.position}`);person.label=el;
