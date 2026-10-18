@@ -1,0 +1,11 @@
+{
+  "name": "office-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Connects WhatsApp (GOWA) and other sources to the APLINDO 3D office via Server-Sent Events.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"test/*.test.js\""
+  }
+}

@@ -6,6 +6,8 @@ import { buildPrayer, samplePrayer } from './prayer.js';
 import { TEAM, PRODUCTS } from './team.js';
 import { PRAYERS, KIND_LABELS, activityAt, planFor, simRate, wibNow, fmt, parseTime, seatPlan, seatKey } from './schedule.js';
 import { sampleRoute } from './nav.js';
+import { createLive, pickOverride, pickOverlay } from './live.js';
+import { initSettings } from './settings.js';
 
 // All models and textures are generated locally. No backend calls; activity and PnL are sample data.
 const $ = (q) => document.querySelector(q);
@@ -37,14 +39,18 @@ const PRAYER=buildPrayer(4);
 const MAKMUM_DELAY=1.05;
 const PRAYER_MINUTES=(PRAYER.duration+MAKMUM_DELAY)/60;
 
-// Clock: accelerated simulation (default) or real Jakarta time. ?t=HH:MM pins the simulated time; add &run to let it continue.
+// Clock modes: 'sim' (accelerated day), 'real' (WIB now) and 'live' (WIB now + events from the bridge).
+// ?t=HH:MM pins the simulated time (add &run to continue); ?mode=real|live picks a mode.
 const params=new URLSearchParams(location.search);
 const pinned=parseTime(params.get('t'));
-let mode=params.get('mode')==='real'?'real':'sim';
-try{if(!params.get('mode')&&localStorage.getItem('office-clock')==='real')mode='real';}catch{}
+const MODES=['sim','real','live'];
+let stored=null;try{stored=localStorage.getItem('office-clock');}catch{}
+let mode=MODES.includes(params.get('mode'))?params.get('mode'):MODES.includes(stored)?stored:'sim';
 let simMinute=pinned??(7*60+24);
 const frozen=pinned!==null&&!params.has('run');
-function clock(){if(mode==='real'&&!frozen)return wibNow();return {minute:simMinute,weekend:false};}
+const realTime=()=>(mode==='real'||mode==='live')&&!frozen;
+function clock(){if(realTime())return wibNow();return {minute:simMinute,weekend:false};}
+const live=createLive();
 
 // ?nav draws the corridor graph and every seat for debugging routes.
 if(params.has('nav')){
@@ -102,17 +108,33 @@ $('#zoomOut').onclick=()=>{transition=null;camera.zoom=Math.max(.45,camera.zoom/
 $('#rotate').onclick=()=>{transition=null;const offset=camera.position.clone().sub(controls.target);offset.applyAxisAngle(new THREE.Vector3(0,1,0),Math.PI/6);camera.position.copy(controls.target).add(offset);};
 $('#reset').onclick=()=>focusRoom('all');
 document.querySelectorAll('[data-focus]').forEach(b=>b.onclick=()=>focusRoom(b.dataset.focus));
-function renderMode(){$('#mode').textContent=mode==='real'?'🕐 Jam nyata':'⏩ Simulasi';$('#mode').setAttribute('aria-pressed',mode==='real');$('#mode').title=mode==='real'?'Mengikuti jam WIB sekarang. Klik untuk simulasi dipercepat.':'Satu hari kerja dipercepat. Klik untuk jam WIB nyata.';}
-$('#mode').onclick=()=>{mode=mode==='real'?'sim':'real';if(mode==='sim')simMinute=wibNow().minute;try{localStorage.setItem('office-clock',mode);}catch{}renderMode();};
+const MODE_TEXT={sim:['⏩ Simulasi','Satu hari kerja dipercepat.'],real:['🕐 Jam nyata','Jadwal mengikuti jam WIB sekarang.'],live:['🟢 Live','Jam WIB + aktivitas nyata dari WhatsApp.']};
+function renderMode(){const [label,title]=MODE_TEXT[mode];$('#mode').textContent=label;$('#mode').setAttribute('aria-pressed',mode!=='sim');$('#mode').title=`${title} Klik untuk ganti mode.`;}
+function setMode(next,remember=true){mode=next;if(mode==='sim')simMinute=wibNow().minute;if(remember)try{localStorage.setItem('office-clock',mode);}catch{}renderMode();for(const p of people)p.travel=null;}
+$('#mode').onclick=()=>{const order=live.available?MODES:['sim','real'];setMode(order[(order.indexOf(mode)+1)%order.length]);};
 renderMode();
 
 // Where each person is and what they do right now, derived only from the clock.
 const STATUS_CLASS={work:'working',meeting:'working',oncall:'working',coffee:'recent',lunch:'recent',prayer:'prayer',off:'offline'};
 function stateOf(p,c){
   const {block,prev,next}=activityAt(p,c.minute,c.weekend);
+  if(mode==='live'){
+    const list=live.forPerson(p.id),ov=pickOverride(list),overlay=pickOverlay(list);
+    // Prayer keeps its place unless the person is on leave; an override replaces the timetable block.
+    if(ov&&(block.kind!=='prayer'||ov.kind==='leave')){
+      const kind=ov.kind==='leave'?'off':ov.place==='meeting'?'meeting':ov.place==='pantry'?'coffee':'work';
+      const lb={kind,place:ov.place||block.place,label:ov.label,start:block.start};
+      const to=ov.place?spotFor(p,lb):spotFor(p,block);
+      return {block:lb,next,to,walking:false,live:ov,overlay:overlay!==ov?overlay:null};
+    }
+    const s=baseState(p,c,block,prev,next);s.overlay=overlay;return s;
+  }
+  return baseState(p,c,block,prev,next);
+}
+function baseState(p,c,block,prev,next){
   const to=spotFor(p,block),from=spotFor(p,prev);
   if(from.key!==to.key){
-    const route=world.nav.route(from,to),walked=(c.minute-block.start)*(mode==='real'&&!frozen?80:8);
+    const route=world.nav.route(from,to),walked=(c.minute-block.start)*(realTime()?80:8);
     if(walked<route.length)return {block,next,to,route,walked,walking:true};
   }
   return {block,next,to,walking:false};
@@ -120,6 +142,12 @@ function stateOf(p,c){
 const tmp=new THREE.Vector3();
 function updatePerson(p,c,t){
   const s=p.state=stateOf(p,c),rig=p.rig,root=rig.root;
+  // A live override starting or ending makes the person walk from where they were, at 1.35 m/s.
+  if(!s.walking){
+    if(p.lastKey&&p.lastKey!==s.to.key&&(s.live||p.lastLive))p.travel={route:world.nav.route(world.spots.get(p.lastKey),s.to),t0:t};
+    p.lastKey=s.to.key;p.lastLive=Boolean(s.live);
+    if(p.travel){const walked=(t-p.travel.t0)*1.35;if(walked<p.travel.route.length){s.walking=true;s.route=p.travel.route;s.walked=walked;}else p.travel=null;}
+  }
   let pose,visible=true,attire=false;
   if(s.walking){
     const at=sampleRoute(s.route,s.walked);root.position.set(at.x,FLOOR,at.z);
@@ -139,15 +167,18 @@ function updatePerson(p,c,t){
     }else if(spot.pose==='play'){
       const b=Math.abs(Math.sin(t*4+k));pose={...POSES_DAILY.play,hip:[0,.8+b*.03,.02]};
     }else{pose={...POSES_DAILY[spot.pose]||POSES_DAILY.stand,turn:Math.sin(t*.4+k)*.3};}
+    // WhatsApp activity: phone in hand (seated or standing), except while praying.
+    if(s.overlay&&['typing','chat'].includes(s.overlay.kind)&&spot.pose!=='pray')pose={...(['play','stand'].includes(spot.pose)?POSES_DAILY.standPhone:POSES_DAILY.sitPhone),turn:Math.sin(t*.3+k)*.15};
   }
   root.visible=visible;rig.setPrayerAttire(attire);rig.apply(pose);
   // Label text and status dot.
-  const text=s.walking?`🚶 Menuju ${roomName(s.to)}`:s.block.label;
+  const text=s.walking?`🚶 Menuju ${roomName(s.to)}`:s.overlay?s.overlay.label:s.block.label;
   if(p.shownText!==text){p.shownText=text;p.speech.textContent=text;}
-  const cls=s.walking?'walking':STATUS_CLASS[s.block.kind];if(p.shownCls!==cls){p.shownCls=cls;p.dot.className=`dot ${cls}`;}
-  p.label.classList.toggle('hidden-label',!visible);p.label.classList.toggle('quiet',!s.walking&&s.block.kind==='prayer');
+  const cls=s.walking?'walking':s.overlay?.kind==='typing'?'typing':STATUS_CLASS[s.block.kind];if(p.shownCls!==cls){p.shownCls=cls;p.dot.className=`dot ${cls}`;}
+  p.label.classList.toggle('hidden-label',!visible);p.label.classList.toggle('quiet',!s.walking&&s.block.kind==='prayer');p.label.classList.toggle('live',Boolean(s.live||s.overlay));
   rig.head.getWorldPosition(tmp);p.entry.point.set(tmp.x,tmp.y+.5,tmp.z);p.entry.room=s.walking?null:s.to.roomId;
 }
+const SOURCE={whatsapp:'WhatsApp',manual:'uji manual',calendar:'Kalender',jira:'Jira',agent:'AI agent'};
 const roomName=spot=>spot.roomId==='parking'?'parkiran':byId[spot.roomId]?.name||'kantor';
 
 // Detail dialogs for people and products.
@@ -155,11 +186,13 @@ function fillPerson(p){
   const s=p.state,c=clock();$('#modalEmoji').textContent=p.emoji;$('#modalName').textContent=p.name;$('#modalRole').textContent=p.role;
   const where=s.walking?`Perjalanan ke ${roomName(s.to)}`:s.block.kind==='off'?'Di luar kantor':roomName(s.to);
   const status=s.walking?'Berjalan':KIND_LABELS[s.block.kind];
-  $('#modalDetails').innerHTML=`<dt>Status</dt><dd>${status}</dd><dt>Lokasi</dt><dd>${where}</dd><dt>Meja</dt><dd>${byId[p.home].name}</dd><dt>Berikutnya</dt><dd>${s.next?`${s.next.label} · ${fmt(s.next.start)}`:'—'}</dd><dt>Framework</dt><dd>AI Agent</dd><dt>Koneksi</dt><dd>Simulasi lokal</dd>`;
+  $('#modalDetails').innerHTML=`<dt>Status</dt><dd>${status}</dd><dt>Lokasi</dt><dd>${where}</dd><dt>Meja</dt><dd>${byId[p.home].name}</dd><dt>Berikutnya</dt><dd>${s.next?`${s.next.label} · ${fmt(s.next.start)}`:'—'}</dd><dt>Framework</dt><dd>AI Agent</dd><dt>Koneksi</dt><dd>${mode==='live'?(live.connected?'🟢 Live':'Live terputus, mencoba lagi'):mode==='real'?'Jadwal · jam WIB':'Simulasi lokal'}</dd>`;
+  const liveList=mode==='live'?live.forPerson(p.id):[];
+  if(liveList.length)$('#modalDetails').innerHTML+=`<dt>Aktivitas live</dt><dd>${liveList.map(e=>`${e.label} <small>(${SOURCE[e.source]||e.source}, s.d. ${fmt(wibNow(new Date(e.until)).minute)})</small>`).join('<br>')}</dd>`;
   $('#activityTitle').textContent='AKTIVITAS SEKARANG';$('#modalActivity').textContent=s.walking?`🚶 Menuju ${roomName(s.to)} untuk: ${s.block.label}`:s.block.label;
   const plan=planFor(p,c.weekend).filter(b=>b.start>0||b.kind!=='off');
   $('#modalSchedule').innerHTML=plan.map(b=>`<li class="${b===s.block?'now':''}"><time>${fmt(b.start)}</time>${b.label}</li>`).join('');$('#modalSchedule').hidden=false;
-  $('#sampleNote').textContent='Jadwal dan aktivitas adalah simulasi — tidak terhubung ke sistem produksi.';
+  $('#sampleNote').textContent=mode==='live'?'Aktivitas live dibaca dari grup WhatsApp yang diizinkan admin. Isi pesan tidak disimpan.':'Jadwal dan aktivitas adalah simulasi — tidak terhubung ke sistem produksi.';
 }
 function fillProduct(p){
   $('#modalEmoji').textContent='💎';$('#modalName').textContent=p.name;$('#modalRole').textContent='Produk SaaS APLINDO';
@@ -190,7 +223,14 @@ function daylight(m){const ramp=(a,b)=>Math.max(0,Math.min(1,(m-a)/(b-a)));retur
 const rupiah=v=>`Rp ${Math.round(v)} jt`;
 let lastHud=0;
 function updateHud(c,t){
-  $('#clock').textContent=`${fmt(c.minute)} WIB`;$('#clockSub').textContent=mode==='real'&&!frozen?(c.weekend?'Akhir pekan':'Jam nyata'):frozen?'Jam dikunci':'Simulasi';
+  $('#clock').textContent=`${fmt(c.minute)} WIB`;$('#clockSub').textContent=frozen?'Jam dikunci':mode==='sim'?'Simulasi':c.weekend?'Akhir pekan':mode==='live'?'Live':'Jam nyata';
+  const wa=live.status.whatsapp;
+  $('#dataNote').textContent=mode!=='live'?'Data contoh · simulasi lokal':!live.connected?'Live terputus · mencoba lagi':wa?.loggedIn?`Live · WhatsApp terhubung${wa.lastEventAt?` · pesan terakhir ${fmt(wibNow(new Date(wa.lastEventAt)).minute)}`:''}`:'Live · WhatsApp belum terhubung';
+  $('#dataNote').parentElement.classList.toggle('is-live',mode==='live'&&live.connected);
+  // Rooms where a WhatsApp group is busy glow and show the group.
+  const hot=mode==='live'?new Map(live.byKind('room_hot').map(e=>[e.room,e])):new Map();
+  for(const [id,el] of Object.entries(roomLabels)){const e=hot.get(id),small=el.querySelector('small');el.classList.toggle('hot',Boolean(e));
+    const sub=e?e.label:id==='mushola'?`Dzuhur ${fmt(PRAYERS.dzuhur.iqamah)} · Ashar ${fmt(PRAYERS.ashar.iqamah)}`:'';if(small.textContent!==sub){small.textContent=sub;small.hidden=!sub;}}
   const working=people.filter(p=>!p.state.walking&&['work','meeting','oncall'].includes(p.state.block.kind)).length;
   $('#activeCount').textContent=`${working} / ${people.length}`;$('#pnlTotal').textContent=rupiah(world.pnlTotal(t));
   const praying=Object.values(PRAYERS).find(pr=>c.minute>=pr.start&&c.minute<pr.iqamah+18);
@@ -202,6 +242,21 @@ function updateHud(c,t){
   }else{const next=Object.values(PRAYERS).find(pr=>c.minute<pr.start)||PRAYERS.dzuhur;$('#prayerTitle').textContent='🕌 Mushalla';$('#prayerPhase').textContent=`Sholat berikutnya: ${next.name} ${fmt(next.iqamah)}`;$('#prayerInfo').textContent='Sholat berjamaah Dzuhur & Ashar di jam kerja';}
 }
 
+// WhatsApp replies draw a short hologram line between the two people.
+// Glowing beams (thin cylinders, readable at any zoom) arc over walls from the replier's head to the person replied to.
+const beamGeo=new THREE.CylinderGeometry(.07,.07,1,6,1,true);beamGeo.translate(0,.5,0);
+const replyBeams=[...Array(8)].map(()=>{const segs=[...Array(6)].map(()=>{const m=new THREE.Mesh(beamGeo,new THREE.MeshBasicMaterial({color:0x52e0ff,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));m.visible=false;scene.add(m);return m;});return segs;});
+const byPersonId=new Map(people.map(p=>[p.id,p])),headA=new THREE.Vector3(),headB=new THREE.Vector3(),pA=new THREE.Vector3(),pB=new THREE.Vector3(),UP=new THREE.Vector3(0,1,0);
+function updateReplyLines(t){
+  const replies=mode==='live'?live.byKind('reply'):[];
+  replyBeams.forEach((segs,i)=>{const e=replies[i],a=e&&byPersonId.get(e.person),b=e&&byPersonId.get(e.meta?.to);const on=Boolean(a&&b&&a.rig.root.visible&&b.rig.root.visible);
+    if(!on){segs.forEach(s=>s.visible=false);return;}
+    a.rig.head.getWorldPosition(headA);b.rig.head.getWorldPosition(headB);const lift=Math.min(4,1+headA.distanceTo(headB)*.25);
+    const point=(u,out)=>out.lerpVectors(headA,headB,u).setY(THREE.MathUtils.lerp(headA.y,headB.y,u)+.35+Math.sin(u*Math.PI)*lift);
+    segs.forEach((s,k)=>{point(k/segs.length,pA);point((k+1)/segs.length,pB);s.position.copy(pA);s.scale.set(1,pA.distanceTo(pB),1);s.quaternion.setFromUnitVectors(UP,pB.sub(pA).normalize());s.material.opacity=.45+.4*Math.max(0,Math.sin(t*6-k*.9));s.visible=true;});});
+}
+// ?debug exposes internals for browser tests.
+if(params.has('debug'))window.__office={people,live,replyBeams,world};
 const projected=new THREE.Vector3();let lastShadow=0,lastFrame=null;
 function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=null;return;}
   const dt=lastFrame===null?0:Math.min((now-lastFrame)/1000,.1);lastFrame=now;const t=now/1000;
@@ -209,6 +264,7 @@ function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=n
   const c=clock();
   world.setDaylight(daylight(c.minute));
   for(const p of people)updatePerson(p,c,t);
+  updateReplyLines(t);
   const occupied=new Set(people.filter(p=>!p.state.walking&&p.rig.root.visible).map(p=>p.state.to.key));
   for(const a of world.animators)a(t,dt,c);world.sportTick(t,occupied);
   if(now-lastHud>250){lastHud=now;updateHud(c,t);if($('#agentDialog').open)fillModal();}
@@ -223,4 +279,9 @@ function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=n
 resize();
 {const c=clock();for(const p of people)updatePerson(p,c,0);updateHud(c,0);world.setDaylight(daylight(c.minute));}
 renderer.shadowMap.needsUpdate=true;renderer.render(scene,camera);$('#loading').remove();$('#stage').dataset.ready='true';requestAnimationFrame(frame);
+// Live data: connect to the bridge if one is deployed; its admin default mode applies unless the viewer chose one.
+live.onChange=type=>{if(type==='mode'&&!params.get('mode')&&!stored&&live.mode.default==='live'&&mode==='sim')setMode('live',false);if($('#agentDialog').open)fillModal();};
+live.start().then(()=>{if(!live.available){if(mode==='live')setMode('sim',false);return;}
+  if(!params.get('mode')&&!stored&&live.mode.default==='live')setMode('live',false);
+  initSettings({live,team:TEAM,rooms:ROOMS.filter(r=>r.id!=='all'),onModeDefault:m=>{if(!stored&&!params.get('mode'))setMode(m,false);}});});
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();$('#error').hidden=false;$('#errorMessage').textContent='Koneksi grafis terputus. Muat ulang halaman untuk melanjutkan.';});

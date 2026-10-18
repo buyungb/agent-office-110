@@ -8,9 +8,47 @@ services:
     # Add the domain in Dokploy (Domains tab → service "web", port 80).
     expose:
       - "80"
-    # Traefik can only reach containers on Dokploy's shared network.
+    # Traefik reaches web on Dokploy's shared network; web reaches bridge on the private default network.
     networks:
       - dokploy-network
+      - default
+
+  # Connects WhatsApp and other sources to the office (SSE at /api/stream, settings at /api/settings).
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSCODE: ${ADMIN_PASSCODE:-}
+      GOWA_URL: http://gowa:3000
+      GOWA_BASIC_AUTH: ${GOWA_BASIC_AUTH:-}
+      GOWA_DEVICE_ID: office
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
+    volumes:
+      - bridge-data:/data
+    networks:
+      - default
+
+  # WhatsApp Web multi-device gateway. Private: only the bridge talks to it. Log in from the office ⚙️ drawer.
+  gowa:
+    image: aldinokemal2104/go-whatsapp-web-multidevice:v9.5.0
+    restart: unless-stopped
+    command: ["rest"]
+    environment:
+      APP_PORT: "3000"
+      APP_BASIC_AUTH: ${GOWA_BASIC_AUTH:-}
+      WHATSAPP_WEBHOOK: http://bridge:8080/hooks/gowa
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET:-}
+      WHATSAPP_WEBHOOK_EVENTS: message,chat_presence,group.participants
+    volumes:
+      - gowa-data:/app/storages
+    networks:
+      - default
+
+volumes:
+  bridge-data:
+  gowa-data:
 
 networks:
   dokploy-network:

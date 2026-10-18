@@ -8,7 +8,7 @@ export const STANDING = {
   ankles:[[-.16,.10,0],[.16,.10,0]],
   feet:[[-.16,.055,.09],[.16,.055,.09]], footTilt:[0,0], footTurn:[0,0],
   elbows:[[-.33,1.15,.04],[.33,1.15,.04]],
-  wrists:[[-.33,.98,.07],[.33,.98,.07]], palms:[0,0], finger:0, cup:0,
+  wrists:[[-.33,.98,.07],[.33,.98,.07]], palms:[0,0], finger:0, cup:0, phone:0,
 };
 export const pose=(base,changes)=>({...base,...changes});
 export function mix(a,b,t){if(Array.isArray(a))return a.map((v,i)=>mix(v,b[i],t));return a+(b-a)*t;}
@@ -30,6 +30,9 @@ export const POSES_DAILY = {
   sitCup:pose(SIT,{cup:1,elbows:[[-.3,.86,.24],[.3,.86,.2]],wrists:[[-.17,.78,.5],[.2,.86,.42]]}),
   drink:pose(SIT,{cup:1,neck:-.12,elbows:[[-.3,.86,.24],[.32,.98,.2]],wrists:[[-.17,.78,.5],[.12,1.26,.24]]}),
   play:pose(STANDING,{hip:[0,.8,.02],knees:[[-.18,.42,.08],[.18,.42,.08]],elbows:[[-.36,1.08,.14],[.36,1.08,.18]],wrists:[[-.3,.92,.3],[.28,.86,.38]]}),
+  // Holding a phone in front of the chest (WhatsApp activity).
+  sitPhone:pose(SIT,{phone:1,neck:.32,elbows:[[-.27,.84,.16],[.27,.84,.16]],wrists:[[-.07,1,.34],[.07,1,.34]]}),
+  standPhone:pose(STANDING,{phone:1,neck:.32,elbows:[[-.28,1.14,.12],[.28,1.14,.12]],wrists:[[-.07,1.3,.3],[.07,1.3,.3]]}),
 };
 // Procedural walk cycle; phase advances with distance walked.
 export function walkPose(phase){
@@ -78,6 +81,7 @@ export function createPerson({color=0x6688aa,trousers=0x37414a,skin=0xd5ab87,hai
   const legs=[-1,1].map(()=>({upper:limb(pants,.19,.23,'pants'),lower:limb(pants,.17,.20,'pants'),foot:part(root,.18,.10,.30,skinMat,'skin')}));
   const finger=part(root,.026,.028,.12,skinMat,'skin');
   const cup=part(root,.09,.11,.09,white,'cup');
+  const phone=part(root,.08,.15,.018,lambert(0x14181f),'phone');const screenGlow=part(phone,.8,.82,1.2,new THREE.MeshBasicMaterial({color:0x52e0ff}),'screen');screenGlow.position.z=.3;
   const shoulder=new THREE.Vector3(),hip=new THREE.Vector3(),temp=new THREE.Vector3(),elbow=new THREE.Vector3(),wrist=new THREE.Vector3(),knee=new THREE.Vector3(),ankle=new THREE.Vector3();
   const bend=new THREE.Quaternion(),X=new THREE.Vector3(1,0,0);
   function segment(mesh,a,b){temp.subVectors(b,a);mesh.position.copy(a).add(b).multiplyScalar(.5);mesh.scale.y=Math.max(.001,temp.length());mesh.quaternion.setFromUnitVectors(Y,temp.normalize());}
@@ -98,6 +102,7 @@ export function createPerson({color=0x6688aa,trousers=0x37414a,skin=0xd5ab87,hai
     finger.visible=p.finger>.5;
     finger.position.set(p.wrists[1][0]-.025,p.wrists[1][1]+.065,p.wrists[1][2]+.09);finger.rotation.x=-.55;
     cup.visible=(p.cup||0)>.5;cup.position.set(p.wrists[1][0],p.wrists[1][1]+.08,p.wrists[1][2]+.02);
+    phone.visible=(p.phone||0)>.5;phone.position.set((p.wrists[0][0]+p.wrists[1][0])/2,(p.wrists[0][1]+p.wrists[1][1])/2+.07,(p.wrists[0][2]+p.wrists[1][2])/2+.02);phone.rotation.x=-.5;
   }
   // Women wear a white mukena over everything while praying; men add a kopiah.
   let attire=false;

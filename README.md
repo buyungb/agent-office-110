@@ -17,6 +17,9 @@ No build or package install is needed. Three.js 0.160.0 and OrbitControls are ve
 | `dist/prayer.js` | Prayer postures and 2/3/4-rakaat step sequences. |
 | `dist/nav.js` | Shortest corridor route between doors, sampled while walking. |
 | `dist/app.js` | Renderer, camera, labels, HUD, popups and the frame loop. |
+| `dist/live.js` | Live activity from the bridge (snapshot + Server-Sent Events). |
+| `dist/settings.js` | ⚙️ settings drawer (admin login, WhatsApp QR, groups, people, rules, privacy). |
+| `bridge/` | Integration service (see Live mode below). |
 
 ## Rooms
 
@@ -58,6 +61,45 @@ Serve the repository root (`python3 -m http.server 4175`) and open:
 Both pages set `document.body.dataset.tests` to `passed` or `failed`.
 
 Pose and sequence reference: https://tarjih.muhammadiyah.or.id/cara-duduk-tahiyat-pada-shalat-dua-rakaat . This is a stylized visual animation, not a recitation or instructional prayer timer.
+
+## Live mode: WhatsApp groups (GOWA)
+
+The office can show real activity from WhatsApp groups. Three services run in `docker-compose.yml`:
+
+| Service | Role |
+|---|---|
+| `web` | nginx serving `dist/`, proxying `/api/` to the bridge (SSE-friendly) |
+| `bridge` | `bridge/` — Node 24, no npm dependencies, SQLite (`node:sqlite`) in the `bridge-data` volume. Receives GOWA webhooks, keeps settings, streams activity to browsers at `/api/stream` |
+| `gowa` | [go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice) v9.5.0, private network only, session in the `gowa-data` volume |
+
+**Dokploy → Environment** (all three are required for live mode):
+
+```
+ADMIN_PASSCODE=<passcode for the ⚙️ settings drawer>
+WHATSAPP_WEBHOOK_SECRET=<long random string; signs GOWA → bridge webhooks>
+GOWA_BASIC_AUTH=<user:password for the GOWA API>
+```
+
+Then, in the office:
+
+1. Click **⚙️** → enter the passcode → **Koneksi** → **📷 Tampilkan QR**, and scan it with the office WhatsApp number (WhatsApp → Linked devices → Link a device). A pairing code works too.
+2. After it connects, groups and members sync automatically. In **Grup WA**, tick the groups to read and pick the room each one lights up.
+3. In **Orang**, accept the name-based suggestions (or type numbers) so senders map to people. WhatsApp often identifies group members by LID; sync fills it in.
+4. Optionally adjust **Aturan** (keyword → activity) and **Privasi**.
+
+How messages become activity:
+
+- Typing → phone in hand and "✍️ Mengetik di <grup>"; a message → "💬 Chat di <grup>" for 2 minutes. Chat never moves anyone.
+- A reply draws an arcing beam from the replier to the person replied to.
+- Three or more people talking in a group within 10 minutes lights up that group's room ("🔥 Diskusi aktif").
+- Keyword rules move people or set a status: `rapat sekarang` → War Room (30 min), `otw ngopi` → Pantry (15 min), `izin sakit` / `cuti` → away until end of day, `deploy prod` → status. Prayer times still win unless someone is on leave.
+- Privacy defaults: message text is never stored and not shown (opt-in snippets), derived activity is kept 24 hours, numbers are masked in lists, and settings changes are written to an audit log.
+
+The mode button cycles **⏩ Simulasi → 🕐 Jam nyata → 🟢 Live**. Without a bridge (plain static hosting) the office stays simulated and hides ⚙️. GOWA uses the unofficial WhatsApp Web protocol: use a dedicated number.
+
+Bridge tests: `cd bridge && npm test` (Node 24; uses a fake GOWA). `?debug` exposes `window.__office` for browser checks.
+
+Planned next: Google Workspace Calendar (free/busy), Jira Cloud webhooks, and AI agent task cards from Hermes (`hooks.outbound`) and the Claude Agent SDK.
 
 ## Deploy (Dokploy)
 

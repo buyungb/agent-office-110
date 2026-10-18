@@ -5,3 +5,6 @@ tests
 README.md
 Dockerfile
 docker-compose.yml
+bridge/data
+bridge/test
+**/node_modules
