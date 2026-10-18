@@ -3,8 +3,8 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { buildWorld, ROOMS, FLOOR, hex } from './rooms.js';
 import { createPerson, POSES_DAILY, walkPose, mixPose } from './people.js';
 import { buildPrayer, samplePrayer } from './prayer.js';
-import { TEAM, PRODUCTS } from './team.js';
-import { PRAYERS, KIND_LABELS, activityAt, planFor, simRate, wibNow, fmt, parseTime, seatPlan, seatKey } from './schedule.js';
+import { TEAM, PRODUCTS, normalizeTeam, resolveTeam } from './team.js';
+import { PRAYERS, KIND_LABELS, activityAt, planFor, simRate, wibNow, fmt, parseTime, seatPlan, seatKey, setTeam } from './schedule.js';
 import { sampleRoute } from './nav.js';
 import { createLive, pickOverride, pickOverlay } from './live.js';
 import { initSettings } from './settings.js';
@@ -58,18 +58,37 @@ if(params.has('nav')){
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));scene.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xff3df5})));
   for(const s of world.spots.values()){const m=new THREE.Mesh(new THREE.SphereGeometry(.08,6,4),new THREE.MeshBasicMaterial({color:0xfff23d}));m.position.set(s.x,FLOOR+.06,s.z);scene.add(m);}
 }
-// Each person gets a seat for every place in their timetable.
-const men=TEAM.filter(p=>!p.hijab&&!p.imam),women=TEAM.filter(p=>p.hijab);
-const seatsById=seatPlan();
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let men=[],women=[],people=[],byPersonId=new Map();
 const skins=[0xd5ab87,0xc99a72,0xe0b896,0xb8875f];
-const people=TEAM.map((p,i)=>{
-  const seats=seatsById.get(p.id);
-  const rig=createPerson({color:p.color,hair:p.hair,hijab:p.hijab,glasses:p.glasses,skin:skins[i%4],scale:p.hijab?.95:1-(i*7%5)*.012});
-  scene.add(rig.root);
-  const person={...p,index:i,rig,seats,heading:0,state:null};
-  rig.root.traverse(o=>{o.userData.person=person;});
-  return person;
-});
+// (Re)builds every person from a resolved team. Called at start and whenever ⚙️ → Tim saves a change.
+// People who stay keep their position; newcomers walk in from the car park; a changed desk means a walk to it.
+function buildPeople(team,{arrive=false}={}){
+  const before=new Map(people.map(p=>[p.id,p]));
+  for(const p of people){scene.remove(p.rig.root);p.label.remove();tracked.splice(tracked.indexOf(p.entry),1);}
+  setTeam(team);
+  men=team.filter(p=>!p.hijab&&!p.imam);women=team.filter(p=>p.hijab);
+  const seatsById=seatPlan(team);
+  people=team.map((p,i)=>{
+    const seats=seatsById.get(p.id);
+    const rig=createPerson({color:p.color,hair:p.hair,hijab:p.hijab,glasses:p.glasses,skin:skins[i%4],scale:p.hijab?.95:1-(i*7%5)*.012});
+    scene.add(rig.root);
+    const old=before.get(p.id);
+    const person={...p,index:i,rig,seats,heading:old?.heading??0,state:null,lastKey:old?old.lastKey:arrive?seats.parking:null,lastLive:old?old.lastLive||old.seat!==p.seat:arrive,travel:old?.travel||null};
+    rig.root.traverse(o=>{o.userData.person=person;});
+    const el=document.createElement('button');el.className='world-label agent-label';el.style.setProperty('--agent-color',hex(p.color));el.setAttribute('aria-label',`${p.name}, ${p.role}, lihat detail`);
+    el.innerHTML='<span class="speech"></span><span class="agent-tag"><span class="name"><i class="dot"></i><span class="who"></span></span><span class="agent-role"></span></span>';
+    el.querySelector('.who').textContent=`${p.emoji} ${p.short}`;el.querySelector('.agent-role').textContent=p.role;
+    el.addEventListener('click',()=>showPerson(person));$('#labels').append(el);
+    person.label=el;person.speech=el.querySelector('.speech');person.dot=el.querySelector('.dot');
+    person.entry={el,point:new THREE.Vector3(),room:p.home,agent:true};tracked.push(person.entry);
+    return person;
+  });
+  byPersonId=new Map(people.map(p=>[p.id,p]));
+  if(modal?.kind==='person'){const next=byPersonId.get(modal.item.id);if(next)modal.item=next;else $('#agentDialog').close();}
+  if(window.__office)window.__office.people=people;
+  const c=clock(),t=performance.now()/1000;for(const p of people)updatePerson(p,c,t);
+}
 function spotFor(person,block){
   return world.spots.get(seatKey(person.seats,block))||world.spots.get(person.seats.desk);
 }
@@ -81,13 +100,6 @@ const roomLabels={};
 for(const r of ROOMS.slice(1))roomLabels[r.id]=label(`${r.icon} ${r.label||r.name}`,r.x,3.3,r.z-(r.d||8)/2,r.accent,r.id);
 label('🅿️ PARKIR',-24.5,1,9,0x52e0ff,'all');
 roomLabels.mushola.querySelector('small').hidden=false;roomLabels.mushola.querySelector('small').textContent=`Dzuhur ${fmt(PRAYERS.dzuhur.iqamah)} · Ashar ${fmt(PRAYERS.ashar.iqamah)}`;
-for(const p of people){
-  const el=document.createElement('button');el.className='world-label agent-label';el.style.setProperty('--agent-color',hex(p.color));el.setAttribute('aria-label',`${p.name}, ${p.role}, lihat detail`);
-  el.innerHTML=`<span class="speech"></span><span class="agent-tag"><span class="name"><i class="dot"></i>${p.emoji} ${p.short}</span><span class="agent-role">${p.role}</span></span>`;
-  el.addEventListener('click',()=>showPerson(p));$('#labels').append(el);
-  p.label=el;p.speech=el.querySelector('.speech');p.dot=el.querySelector('.dot');
-  p.entry={el,point:new THREE.Vector3(),room:p.home,agent:true};tracked.push(p.entry);
-}
 let selected='all',transition=null,modal=null;
 for(const r of ROOMS){const b=document.createElement('button');b.className='tab';b.dataset.room=r.id;b.setAttribute('aria-pressed',r.id==='all');b.innerHTML=`<span class="ic">${r.icon}</span>${r.name}`;b.addEventListener('click',()=>focusRoom(r.id));$('#tabs').append(b);}
 function baseSpan(){return innerWidth<760?86:66;}
@@ -186,12 +198,12 @@ function fillPerson(p){
   const s=p.state,c=clock();$('#modalEmoji').textContent=p.emoji;$('#modalName').textContent=p.name;$('#modalRole').textContent=p.role;
   const where=s.walking?`Perjalanan ke ${roomName(s.to)}`:s.block.kind==='off'?'Di luar kantor':roomName(s.to);
   const status=s.walking?'Berjalan':KIND_LABELS[s.block.kind];
-  $('#modalDetails').innerHTML=`<dt>Status</dt><dd>${status}</dd><dt>Lokasi</dt><dd>${where}</dd><dt>Meja</dt><dd>${byId[p.home].name}</dd><dt>Berikutnya</dt><dd>${s.next?`${s.next.label} · ${fmt(s.next.start)}`:'—'}</dd><dt>Framework</dt><dd>AI Agent</dd><dt>Koneksi</dt><dd>${mode==='live'?(live.connected?'🟢 Live':'Live terputus, mencoba lagi'):mode==='real'?'Jadwal · jam WIB':'Simulasi lokal'}</dd>`;
+  $('#modalDetails').innerHTML=`<dt>Status</dt><dd>${esc(status)}</dd><dt>Lokasi</dt><dd>${esc(where)}</dd><dt>Meja</dt><dd>${esc(byId[p.home]?.name)}</dd><dt>Berikutnya</dt><dd>${s.next?`${esc(s.next.label)} · ${fmt(s.next.start)}`:'—'}</dd><dt>Framework</dt><dd>AI Agent</dd><dt>Koneksi</dt><dd>${mode==='live'?(live.connected?'🟢 Live':'Live terputus, mencoba lagi'):mode==='real'?'Jadwal · jam WIB':'Simulasi lokal'}</dd>`;
   const liveList=mode==='live'?live.forPerson(p.id):[];
-  if(liveList.length)$('#modalDetails').innerHTML+=`<dt>Aktivitas live</dt><dd>${liveList.map(e=>`${e.label} <small>(${SOURCE[e.source]||e.source}, s.d. ${fmt(wibNow(new Date(e.until)).minute)})</small>`).join('<br>')}</dd>`;
+  if(liveList.length)$('#modalDetails').innerHTML+=`<dt>Aktivitas live</dt><dd>${liveList.map(e=>`${esc(e.label)} <small>(${esc(SOURCE[e.source]||e.source)}, s.d. ${fmt(wibNow(new Date(e.until)).minute)})</small>`).join('<br>')}</dd>`;
   $('#activityTitle').textContent='AKTIVITAS SEKARANG';$('#modalActivity').textContent=s.walking?`🚶 Menuju ${roomName(s.to)} untuk: ${s.block.label}`:s.block.label;
   const plan=planFor(p,c.weekend).filter(b=>b.start>0||b.kind!=='off');
-  $('#modalSchedule').innerHTML=plan.map(b=>`<li class="${b===s.block?'now':''}"><time>${fmt(b.start)}</time>${b.label}</li>`).join('');$('#modalSchedule').hidden=false;
+  $('#modalSchedule').innerHTML=plan.map(b=>`<li class="${b===s.block?'now':''}"><time>${fmt(b.start)}</time>${esc(b.label)}</li>`).join('');$('#modalSchedule').hidden=false;
   $('#sampleNote').textContent=mode==='live'?'Aktivitas live dibaca dari grup WhatsApp yang diizinkan admin. Isi pesan tidak disimpan.':'Jadwal dan aktivitas adalah simulasi — tidak terhubung ke sistem produksi.';
 }
 function fillProduct(p){
@@ -238,7 +250,7 @@ function updateHud(c,t){
   if(praying){const secs=(c.minute-praying.iqamah)*60,st=samplePrayer(Math.max(0,secs),PRAYER.steps);
     $('#prayerTitle').textContent=`🕌 Sholat ${praying.name} berjamaah`;
     $('#prayerPhase').textContent=secs<0?`Menunggu iqamah ${fmt(praying.iqamah)}`:secs>PRAYER.duration?'Selesai · dzikir':`${st.rakaat?'Rakaat '+st.rakaat+' · ':''}${st.label}`;
-    $('#prayerInfo').textContent=`Imam: Buyung Bahari · ${men.length} makmum laki-laki · ${women.length} makmum perempuan`;
+    $('#prayerInfo').textContent=`Imam: ${people.find(p=>p.imam)?.name||'—'} · ${men.length} makmum laki-laki · ${women.length} makmum perempuan`;
   }else{const next=Object.values(PRAYERS).find(pr=>c.minute<pr.start)||PRAYERS.dzuhur;$('#prayerTitle').textContent='🕌 Mushalla';$('#prayerPhase').textContent=`Sholat berikutnya: ${next.name} ${fmt(next.iqamah)}`;$('#prayerInfo').textContent='Sholat berjamaah Dzuhur & Ashar di jam kerja';}
 }
 
@@ -246,7 +258,7 @@ function updateHud(c,t){
 // Glowing beams (thin cylinders, readable at any zoom) arc over walls from the replier's head to the person replied to.
 const beamGeo=new THREE.CylinderGeometry(.07,.07,1,6,1,true);beamGeo.translate(0,.5,0);
 const replyBeams=[...Array(8)].map(()=>{const segs=[...Array(6)].map(()=>{const m=new THREE.Mesh(beamGeo,new THREE.MeshBasicMaterial({color:0x52e0ff,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));m.visible=false;scene.add(m);return m;});return segs;});
-const byPersonId=new Map(people.map(p=>[p.id,p])),headA=new THREE.Vector3(),headB=new THREE.Vector3(),pA=new THREE.Vector3(),pB=new THREE.Vector3(),UP=new THREE.Vector3(0,1,0);
+const headA=new THREE.Vector3(),headB=new THREE.Vector3(),pA=new THREE.Vector3(),pB=new THREE.Vector3(),UP=new THREE.Vector3(0,1,0);
 function updateReplyLines(t){
   const replies=mode==='live'?live.byKind('reply'):[];
   replyBeams.forEach((segs,i)=>{const e=replies[i],a=e&&byPersonId.get(e.person),b=e&&byPersonId.get(e.meta?.to);const on=Boolean(a&&b&&a.rig.root.visible&&b.rig.root.visible);
@@ -277,11 +289,21 @@ function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=n
   if(now-lastShadow>(walking?250:1500)){renderer.shadowMap.needsUpdate=true;lastShadow=now;}renderer.render(scene,camera);
 }
 resize();
-{const c=clock();for(const p of people)updatePerson(p,c,0);updateHud(c,0);world.setDaylight(daylight(c.minute));}
+// Use the team saved in the bridge when there is one (waiting at most 2.5 s), otherwise the defaults.
+const started=live.start();
+await Promise.race([started,new Promise(r=>setTimeout(r,2500))]);
+const liveTeam=()=>live.team?resolveTeam(normalizeTeam(live.team)):null;
+buildPeople(liveTeam()||TEAM);
+{const c=clock();updateHud(c,0);world.setDaylight(daylight(c.minute));}
 renderer.shadowMap.needsUpdate=true;renderer.render(scene,camera);$('#loading').remove();$('#stage').dataset.ready='true';requestAnimationFrame(frame);
 // Live data: connect to the bridge if one is deployed; its admin default mode applies unless the viewer chose one.
-live.onChange=type=>{if(type==='mode'&&!params.get('mode')&&!stored&&live.mode.default==='live'&&mode==='sim')setMode('live',false);if($('#agentDialog').open)fillModal();};
-live.start().then(()=>{if(!live.available){if(mode==='live')setMode('sim',false);return;}
+// Rebuild people only when the saved team actually differs from what is on screen (also after an SSE reconnect).
+let appliedTeam=JSON.stringify(live.team);
+function syncTeam(arrive){const json=JSON.stringify(live.team);if(!live.team||json===appliedTeam)return;appliedTeam=json;buildPeople(liveTeam(),{arrive});}
+live.onChange=type=>{if(type==='team'||type==='snapshot')syncTeam(type==='team');
+  if(type==='mode'&&!params.get('mode')&&!stored&&live.mode.default==='live'&&mode==='sim')setMode('live',false);if($('#agentDialog').open)fillModal();};
+started.then(()=>{if(!live.available){if(mode==='live')setMode('sim',false);return;}
+  syncTeam(false);
   if(!params.get('mode')&&!stored&&live.mode.default==='live')setMode('live',false);
-  initSettings({live,team:TEAM,rooms:ROOMS.filter(r=>r.id!=='all'),onModeDefault:m=>{if(!stored&&!params.get('mode'))setMode(m,false);}});});
+  initSettings({live,team:()=>people,rooms:ROOMS.filter(r=>r.id!=='all'),onModeDefault:m=>{if(!stored&&!params.get('mode'))setMode(m,false);}});});
 renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();$('#error').hidden=false;$('#errorMessage').textContent='Koneksi grafis terputus. Muat ulang halaman untuk melanjutkan.';});

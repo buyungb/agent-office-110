@@ -44,3 +44,16 @@
 .drawer ul.plain{margin:0;padding-left:16px;color:var(--muted);font-size:11px;display:grid;gap:3px}
 .drawer code{color:#7fe9ff}
 @media(max-width:760px){.drawer{top:0;right:0;bottom:0;width:100vw;border-radius:0}}
+
+.drawer .capacity{display:flex;flex-wrap:wrap;gap:6px}.drawer .capacity span{background:#0a111d;border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:11px;color:var(--muted)}.drawer .capacity b{color:#e6fbff;margin-right:4px;font-size:13px}
+.drawer .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:6px}
+.drawer .person-card{display:grid;gap:2px;text-align:left;padding:8px 10px 8px 14px;position:relative;overflow:hidden}
+.drawer .person-card .swatch{position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--c)}
+.drawer .person-card b{font-size:12.5px}.drawer .person-card small{color:var(--muted);font-size:10.5px}
+.drawer .person-card:hover{border-color:#52e0ff88}
+.drawer fieldset{border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:grid;gap:6px;margin:0}.drawer legend{color:var(--muted);font-size:11px;padding:0 4px}
+.drawer .editor .row>label:not(.check){flex:1;min-width:120px}
+.drawer input[type=color]{width:42px;height:28px;padding:2px}
+.drawer input[type=radio]{accent-color:#52e0ff}
+.drawer .errors{margin:0;padding:8px 10px 8px 26px;border-radius:8px;background:#5a1f26;color:#ffd3d7;font-size:12px;display:grid;gap:3px}
+.drawer button[disabled]{opacity:.45;cursor:not-allowed}

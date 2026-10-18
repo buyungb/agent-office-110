@@ -10,7 +10,7 @@ No build or package install is needed. Three.js 0.160.0 and OrbitControls are ve
 
 | File | Contents |
 |---|---|
-| `dist/team.js` | People (name, role, seat, coffee shift, lunch place, jobs) and the six SaaS products. Edit names and roles here. |
+| `dist/team.js` | Default people and role catalog, desk seats, capacity rules (`validateTeam`), and the six SaaS products. With a bridge, people and roles are edited in ⚙️ → Tim instead. |
 | `dist/schedule.js` | Daily timetable, seat assignment, simulation speed, WIB clock. Pure logic, no Three.js. |
 | `dist/rooms.js` | Campus layout, furniture, room animations, corridors and the walking graph. |
 | `dist/people.js` | Jointed person rig (1 unit = 1 m) with sitting, typing, coffee, walking and playing poses. |
@@ -55,12 +55,21 @@ The displayed metrics and activity are sample data, not a connection to live inf
 
 Serve the repository root (`python3 -m http.server 4175`) and open:
 
-- `/tests/schedule-preview.html` — the full timetable, plus checks that every seat exists, no two people share a seat at once, every route enters and leaves rooms only through doors, and everyone reaches the Mushalla before iqamah.
+- `/tests/schedule-preview.html` — the full timetable, plus checks for both the default team and a full 26-person office: every seat exists, no two people share a seat at once, every route enters and leaves rooms only through doors, and everyone reaches the Mushalla before iqamah.
 - `/tests/prayer-preview.html` — prayer postures, step order (including the 4-rakaat sequence) and that no posture sinks below the mat.
 
 Both pages set `document.body.dataset.tests` to `passed` or `failed`.
 
 Pose and sequence reference: https://tarjih.muhammadiyah.or.id/cara-duduk-tahiyat-pada-shalat-dua-rakaat . This is a stylized visual animation, not a recitation or instructional prayer timer.
+
+## People and roles (⚙️ → Tim)
+
+With a bridge deployed, admins manage the team inside the office:
+
+- **People:** add, edit or remove. Fields: name, label, role, emoji, shirt colour, gender (prayer row and attire), hair or hijab colour, glasses, desk, coffee shift (or none), lunch place (Pantry, Sport Hall, Lobby or at the desk), the 14:00 meeting, night on-call, imam, and arrival offset. Jobs can be left empty to use the role's defaults.
+- **Role catalog:** name, emoji, colour, default room and three default jobs. Renaming a role updates everyone who holds it. A role still in use cannot be deleted.
+- **Rules:** checked both in the browser and in the bridge. There must be exactly one imam, and he must be male. Desks cannot be shared. Capacity: 26 desks, 15 men / 12 women in the Mushalla rows, 12 seats per coffee shift, Pantry 12 / Sport Hall 4 / Lobby 4 at lunch, and the War Room chairs left over after War Room desks for the meeting.
+- **Changes apply live** for every viewer without a reload: newcomers walk in from the car park, and a changed desk means a walk to it. **Kembalikan default** restores the 14 people above.
 
 ## Live mode: WhatsApp groups (GOWA)
 

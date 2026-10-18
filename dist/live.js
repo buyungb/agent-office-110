@@ -1,14 +1,15 @@
 // Live activity from the office bridge (/api). Without a bridge (plain static hosting) the office stays simulated.
 export function createLive(){
   const events=new Map();
-  const live={available:false,connected:false,status:{},mode:{default:'sim'},events,onChange:()=>{}};
+  const live={available:false,connected:false,status:{},mode:{default:'sim'},team:null,events,onChange:()=>{}};
   const put=e=>events.set(e.id,e);
   function apply(type,data){
-    if(type==='snapshot'){events.clear();data.events.forEach(put);live.status=data.status;live.mode=data.mode||live.mode;}
+    if(type==='snapshot'){events.clear();data.events.forEach(put);live.status=data.status;live.mode=data.mode||live.mode;if(data.team)live.team=data.team;}
     else if(type==='activity')put(data);
     else if(type==='remove')events.delete(data.id);
     else if(type==='status')live.status=data;
     else if(type==='mode')live.mode=data;
+    else if(type==='team')live.team=data;
     live.onChange(type,data);
   }
   live.start=async()=>{
@@ -18,7 +19,7 @@ export function createLive(){
       apply('snapshot',await res.json());live.available=true;
     }catch{return live;}
     const source=new EventSource('/api/stream');
-    for(const type of ['snapshot','activity','remove','status','mode'])source.addEventListener(type,e=>apply(type,JSON.parse(e.data)));
+    for(const type of ['snapshot','activity','remove','status','mode','team'])source.addEventListener(type,e=>apply(type,JSON.parse(e.data)));
     source.onopen=()=>{live.connected=true;live.onChange('connection');};
     source.onerror=()=>{live.connected=false;live.onChange('connection');};
     return live;

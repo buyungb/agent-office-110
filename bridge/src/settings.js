@@ -8,8 +8,9 @@ export const DEFAULT_RULES = [
 export const DEFAULT_PRIVACY = { showText: false, maskNumbers: true, retentionHours: 24 };
 export const PLACES = ['meeting', 'pantry', 'parking', 'desk', null];
 
+// team() returns the current (resolved) team; contact mappings exist only for people in it.
 export function createSettings(db, team) {
-  const people = () => ({ ...Object.fromEntries(team.map(p => [p.id, { waPhone: '', waLid: '', email: '' }])), ...db.getSetting('people', {}) });
+  const people = () => { const saved = db.getSetting('people', {}); return Object.fromEntries(team().map(p => [p.id, { waPhone: '', waLid: '', email: '', ...saved[p.id] }])); };
   const get = key => {
     switch (key) {
       case 'people': return people();
@@ -55,7 +56,9 @@ export function createSettings(db, team) {
     if (patch.mode) { db.setSetting('mode', { default: patch.mode.default === 'sim' ? 'sim' : 'live' });changed.push('mode'); }
     return changed;
   }
-  return { get, update };
+  // Drops contact mappings of people who were removed from the team.
+  function prunePeople() { db.setSetting('people', people()); }
+  return { get, update, prunePeople };
 }
 
 // Indonesian numbers in any common form → 62xxxxxxxxx (digits only).

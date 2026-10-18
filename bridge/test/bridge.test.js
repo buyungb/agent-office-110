@@ -131,3 +131,71 @@ test('helpers: phone normalisation and end of day in WIB', () => {
   const t = Date.UTC(2026, 9, 18, 3, 0);// 10:00 WIB
   assert.equal(new Date(endOfDayWib(t) + 1).toISOString(), '2026-10-18T17:00:00.000Z');
 });
+
+// ---- Team management ----
+const teamNow = async () => (await api('GET', '/api/team')).body;
+const clone = v => JSON.parse(JSON.stringify(v));
+
+test('team is public to read but only admins can change it', async () => {
+  const t = await teamNow();
+  assert.equal(t.people.length, 14);assert.ok(t.roles.some(r => r.id === 'ai-engineer'));
+  const saved = cookie;cookie = null;
+  assert.equal((await api('PUT', '/api/team', t)).status, 401);
+  cookie = saved;
+});
+
+test('editing a person and a role is validated, stored and broadcast', async () => {
+  const t = clone(await teamNow());
+  const controller = new AbortController();
+  const res = await fetch(base + '/api/stream', { signal: controller.signal });
+  const reader = res.body.getReader(), decoder = new TextDecoder();let text = '';
+  const until = async pattern => { while (!pattern.test(text)) { const { value } = await reader.read(); text += decoder.decode(value); } };
+  await until(/event: snapshot/);
+  t.people.find(p => p.id === 'arka').name = 'Arka Wijaya';
+  t.roles.find(r => r.id === 'ai-engineer').name = 'Applied AI Engineer';
+  const r = await api('PUT', '/api/team', t);
+  assert.equal(r.status, 200);
+  await until(/event: team\ndata: .*Arka Wijaya/);controller.abort();
+  const after = await teamNow();
+  assert.equal(after.people.find(p => p.id === 'arka').name, 'Arka Wijaya');
+  assert.equal(after.roles.find(r => r.id === 'ai-engineer').name, 'Applied AI Engineer');
+  assert.equal((await api('GET', '/api/settings')).body.team.find(p => p.id === 'arka').role, 'Applied AI Engineer');
+});
+
+test('invalid teams are rejected with every problem listed', async () => {
+  const base0 = clone(await teamNow());
+  const cases = [
+    [t => { t.people.find(p => p.id === 'arka').imam = true; }, /satu imam/],
+    [t => { t.people.forEach(p => p.imam = false); t.people.find(p => p.id === 'sekar').imam = true; }, /imam harus laki-laki/],
+    [t => { t.people.find(p => p.id === 'satria').seat = 'ailab:0'; }, /meja yang sama/],
+    [t => { t.roles = t.roles.filter(r => r.id !== 'cto'); }, /tidak ada di katalog/],
+    [t => { t.people.forEach(p => { p.lunch = 'sport'; }); }, /Sport Hall penuh/],
+    [t => { t.people.forEach(p => { p.meeting = true; }); }, /Kursi rapat War Room penuh/],
+  ];
+  for (const [change, message] of cases) {
+    const t = clone(base0);change(t);
+    const r = await api('PUT', '/api/team', t);
+    assert.equal(r.status, 400, String(message));assert.ok(r.body.errors.some(e => message.test(e)), `${message} not in ${r.body.errors}`);
+  }
+});
+
+test('adding and removing people keeps contact mappings in step', async () => {
+  const t = clone(await teamNow());
+  t.people.push({ id: 'nadia', name: 'Nadia Putri', short: 'Nadia', roleId: 'backend', gender: 'P', seat: 'studio:4', coffee: 'A', lunch: 'pantry', hijab: '#336699' });
+  assert.equal((await api('PUT', '/api/team', t)).status, 200);
+  await api('PUT', '/api/settings', { people: { nadia: { waPhone: '0855-1' } } });
+  assert.equal((await api('GET', '/api/settings')).body.people.nadia.waPhone, '628551');
+  const r = await hook(msg('628551', 'halo dari nadia'));assert.equal(r.body.person, 'nadia');
+  t.people = t.people.filter(p => p.id !== 'nadia');
+  assert.equal((await api('PUT', '/api/team', t)).status, 200);
+  const s = (await api('GET', '/api/settings')).body;
+  assert.equal(s.people.nadia, undefined);assert.ok(!(await eventsNow()).some(e => e.person === 'nadia'));
+  assert.equal((await hook(msg('628551', 'masih ada?'))).body.reason, 'unmapped');
+});
+
+test('reset restores the default team', async () => {
+  const r = await api('POST', '/api/team/reset', {});
+  assert.equal(r.status, 200);
+  const t = await teamNow();
+  assert.equal(t.people.length, 14);assert.equal(t.people.find(p => p.id === 'arka').name, 'Arka');
+});

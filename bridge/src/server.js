@@ -22,10 +22,13 @@ function send(res, status, data, headers = {}) { res.writeHead(status, { 'conten
 
 export async function startBridge(overrides = {}) {
   const config = { ...defaults, ...overrides, gowa: { ...defaults.gowa, ...overrides.gowa } };
-  const { TEAM } = await import(pathToFileURL(config.teamFile));
+  const { DEFAULT_TEAM, normalizeTeam, validateTeam, resolveTeam } = await import(pathToFileURL(config.teamFile));
   const db = openDb(config.dataDir);
   const stream = createStream();
-  const settings = createSettings(db, TEAM);
+  // People and roles are edited in the office (⚙️ → Tim); defaults come from dist/team.js.
+  let teamData = normalizeTeam(db.getSetting('team', DEFAULT_TEAM)), resolved = resolveTeam(teamData);
+  const currentTeam = () => resolved;
+  const settings = createSettings(db, currentTeam);
   const events = createEvents({ db, broadcast: stream.broadcast, retentionHours: () => settings.get('privacy').retentionHours });
   const auth = createAuth(config.adminPasscode);
   const gowa = createGowa({ ...config.gowa, fetchImpl: overrides.fetchImpl || fetch });
@@ -36,17 +39,28 @@ export async function startBridge(overrides = {}) {
   const poll = setInterval(() => refreshWhatsApp().catch(() => {}), 30_000);poll.unref();
   refreshWhatsApp().catch(() => {});
 
-  const team = TEAM.map(p => ({ id: p.id, name: p.name, short: p.short, role: p.role }));
-  const snapshot = () => ({ events: events.list(), status, mode: settings.get('mode'), at: Date.now() });
+  const teamSummary = () => resolved.map(p => ({ id: p.id, name: p.name, short: p.short, role: p.role }));
+  const snapshot = () => ({ events: events.list(), status, mode: settings.get('mode'), team: teamData, at: Date.now() });
+  function saveTeam(next, action) {
+    const data = normalizeTeam(next), errors = validateTeam(data);
+    if (errors.length) throw Object.assign(new Error(errors[0]), { status: 400, errors });
+    teamData = data;resolved = resolveTeam(data);db.setSetting('team', data);settings.prunePeople();
+    const ids = new Set(data.people.map(p => p.id));
+    for (const e of events.list()) if (e.person && !ids.has(e.person)) events.remove(e.id);
+    audit(action, `${data.people.length} orang, ${data.roles.length} peran`);stream.broadcast('team', data);
+    return { ok: true, team: data };
+  }
   const audit = (action, detail = '') => db.audit('admin', action, detail);
 
   // Admin-only routes require a session and a custom header (blocks cross-site form posts).
   const admin = {
-    'GET /api/settings': () => ({ team, people: settings.get('people'), groups: settings.get('groups'), rules: settings.get('rules'), privacy: settings.get('privacy'), mode: settings.get('mode'), status, unmapped: wa.unmapped().map(u => ({ ...u, jid: settings.get('privacy').maskNumbers ? maskPhone(u.jid.split('@')[0]) : u.jid })) }),
+    'GET /api/settings': () => ({ team: teamSummary(), people: settings.get('people'), groups: settings.get('groups'), rules: settings.get('rules'), privacy: settings.get('privacy'), mode: settings.get('mode'), status, unmapped: wa.unmapped().map(u => ({ ...u, jid: settings.get('privacy').maskNumbers ? maskPhone(u.jid.split('@')[0]) : u.jid })) }),
     'PUT /api/settings': body => { const changed = settings.update(body); audit('settings.update', changed.join(',')); stream.broadcast('mode', settings.get('mode')); return { ok: true, changed }; },
     'GET /api/admin/audit': () => db.recentAudit(50),
+    'PUT /api/team': body => saveTeam(body, 'team.update'),
+    'POST /api/team/reset': () => saveTeam(DEFAULT_TEAM, 'team.reset'),
     'POST /api/admin/test-event': body => {
-      if (!team.some(p => p.id === body.person)) throw Object.assign(new Error('person tidak dikenal'), { status: 400 });
+      if (!resolved.some(p => p.id === body.person)) throw Object.assign(new Error('person tidak dikenal'), { status: 400 });
       const minutes = Math.max(.1, Math.min(120, Number(body.minutes) || 2));
       const ev = events.put({ id: `manual:${body.person}`, person: body.person, source: 'manual', kind: body.kind || 'intent', place: body.place ?? null, room: body.room ?? null, label: String(body.label || '🧪 Event uji').slice(0, 60), until: Date.now() + minutes * 60_000 });
       audit('test-event', body.person);return ev;
@@ -66,7 +80,7 @@ export async function startBridge(overrides = {}) {
       const members = new Map();
       for (const g of (enabled.length ? enabled : groups).slice(0, 20)) for (const m of await gowa.participants(g.jid).catch(() => [])) members.set(m.lid || m.phone, m);
       const people = settings.get('people'), suggestions = {};
-      for (const p of TEAM) {
+      for (const p of resolved) {
         if (people[p.id].waPhone || people[p.id].waLid) continue;
         const names = [p.short, p.name].map(s => s.toLowerCase());
         const hit = [...members.values()].find(m => m.name && names.some(n => m.name.toLowerCase().includes(n)));
@@ -82,8 +96,9 @@ export async function startBridge(overrides = {}) {
     try {
       if (route === 'GET /api/health') return send(res, 200, { ok: true });
       if (route === 'GET /api/state') return send(res, 200, snapshot());
+      if (route === 'GET /api/team') return send(res, 200, teamData);
       if (route === 'GET /api/stream') return stream.open(req, res, snapshot);
-      if (route === 'GET /api/admin/me') return send(res, 200, { admin: auth.isAdmin(req), enabled: auth.enabled, team });
+      if (route === 'GET /api/admin/me') return send(res, 200, { admin: auth.isAdmin(req), enabled: auth.enabled, team: teamSummary() });
       if (route === 'POST /api/admin/login') { const r = auth.login(req, parseJson(await readBody(req)).passcode); return send(res, r.status, r.error ? { error: r.error } : { ok: true }, r.cookie ? { 'set-cookie': r.cookie } : {}); }
       if (route === 'POST /api/admin/logout') return send(res, 200, { ok: true }, { 'set-cookie': auth.logout(req) });
       if (route === 'POST /hooks/gowa') {
@@ -102,7 +117,7 @@ export async function startBridge(overrides = {}) {
     } catch (error) {
       const code = error instanceof GowaError ? (error.status >= 500 || !error.status ? 502 : error.status) : error.status || (error instanceof SyntaxError || /harus|tidak dikenal|bukan grup|Invalid regular/.test(error.message) ? 400 : 500);
       if (code >= 500 && !(error instanceof GowaError)) console.error(error);
-      send(res, code, { error: error.message });
+      send(res, code, { error: error.message, ...(error.errors && { errors: error.errors }) });
     }
   });
   await new Promise(r => server.listen(config.port, r));

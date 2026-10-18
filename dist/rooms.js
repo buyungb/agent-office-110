@@ -244,9 +244,12 @@ export function buildWorld(scene){
     box(c,4.4,1,-1.8,.7,2,.7,0xd9dde2);box(c,4.04,1.2,-1.8,.01,1.2,.5,glow(0xffa04d),false);plant(c,-4.4,3.4);
   }
   // Mushalla: imam faces the mihrab; men's row behind him, women's row at the back.
-  const prayerRows={imam:[0,-2.7],men:{z:-1.3,xs:[-2.4,-1.6,-.8,0,.8,1.6,2.4]},women:{z:.9,xs:[-2.25,-1.35,-.45,.45,1.35,2.25]}};
+  // Rows are 1.4 m apart so sujud never overlaps the row in front; each row fills from the centre outwards.
+  const centreOut=xs=>[...xs].sort((a,b)=>Math.abs(a)-Math.abs(b)||a-b);
+  const menXs=centreOut([-2.4,-1.6,-.8,0,.8,1.6,2.4]),womenXs=centreOut([-2.25,-1.35,-.45,.45,1.35,2.25]);
   {const c=on('mushola');rug(c,0,-.3,5.6,7.6,0x2f7a4c,0xc9a95c);
-    const mats=[['mushola:imam',...prayerRows.imam],...prayerRows.men.xs.map((x,i)=>[`mushola:m${i}`,x,prayerRows.men.z]),...prayerRows.women.xs.map((x,i)=>[`mushola:w${i}`,x,prayerRows.women.z])];
+    const rows=(prefix,xs,zs)=>zs.flatMap((z,r)=>xs.map((x,i)=>[`mushola:${prefix}${r*xs.length+i}`,x,z]));
+    const mats=[['mushola:imam',0,-3],...rows('m',menXs,[-1.6,-.2]),...rows('w',womenXs,[1.2,2.6])];
     for(const [key,x,z] of mats){box(c,x,.03,z-.47,.72,.02,1.45,key.includes('w')?0x6b3f5f:0x1f5f43,false);box(c,x,.042,z-1.1,.5,.01,.04,glow(0xe9c46a),false);seat(c,key,x,z,Math.PI,'pray');}
     box(c,0,1.3,-4.34,1.45,2.1,.12,0xc9b475);box(c,0,1.28,-4.27,1.1,1.8,.08,0x417758);
     const niche=box(c,0,1.28,-4.22,.9,1.6,.01,holo(0xffe2a0,.25),false);
@@ -369,7 +372,7 @@ export function buildWorld(scene){
   const spots=new Map(),v=new THREE.Vector3(),q=new THREE.Quaternion(),e=new THREE.Euler();
   for(const s of seatList){s.o.getWorldPosition(v);s.o.getWorldQuaternion(q);e.setFromQuaternion(q,'YXZ');
     spots.set(s.key,{key:s.key,x:v.x,z:v.z,rot:e.y,pose:s.pose,roomId:s.room.id,room:navRooms[s.room.id],via:s.via.map(([a,b])=>[s.room.x+a,s.room.z+b])});}
-  for(let i=0;i<20;i++)spots.set(`parking:${i}`,{key:`parking:${i}`,x:-22.4-(i%4)*.45,z:.4+Math.floor(i/4)*.3,rot:Math.PI/2,pose:'stand',roomId:'parking',room:navRooms.parking,via:[]});
+  for(let i=0;i<30;i++)spots.set(`parking:${i}`,{key:`parking:${i}`,x:-22.4-(i%4)*.45,z:.4+Math.floor(i/4)*.3,rot:Math.PI/2,pose:'stand',roomId:'parking',room:navRooms.parking,via:[]});
 
   // Animated scoreboard and ball depend on which players are on court.
   function sportTick(t,occupied){

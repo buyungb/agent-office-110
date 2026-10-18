@@ -6,35 +6,53 @@
 <table id="table"></table>
 <script type="module">
 import * as THREE from 'three';
-import {TEAM} from '/dist/team.js';
-import {planFor,seatPlan,seatKey,fmt,PRAYERS,simRate} from '/dist/schedule.js';
+import {TEAM,DEFAULT_TEAM,DEFAULT_ROLES,SEATS,CAPACITY,normalizeTeam,validateTeam,resolveTeam} from '/dist/team.js';
+import {planFor,seatPlan,seatKey,setTeam,fmt,PRAYERS} from '/dist/schedule.js';
 import {buildWorld,ROOMS} from '/dist/rooms.js';
 import {sampleRoute} from '/dist/nav.js';
-const errors=[];
-// Timetable.
-const times=[...new Set(TEAM.flatMap(p=>planFor(p).map(b=>b.start)))].sort((a,b)=>a-b);
-const table=document.querySelector('#table');
-table.innerHTML=`<tr><th>Jam</th>${TEAM.map(p=>`<th>${p.short}<br><small>${p.role}</small></th>`).join('')}</tr>`+times.map(t=>`<tr><td>${fmt(t)}</td>${TEAM.map(p=>{const b=planFor(p).find(b=>b.start===t);return `<td class="${b?.kind||''}">${b?b.label:''}</td>`;}).join('')}</tr>`).join('');
-// Every block must start before it ends, and everyone must reach the mushalla before iqamah.
-const world=buildWorld(new THREE.Scene());const seats=seatPlan();
-for(const p of TEAM)for(const b of planFor(p)){if(!(b.end>b.start))errors.push(`${p.id}: empty block at ${fmt(b.start)}`);if(!world.spots.get(seatKey(seats.get(p.id),b)))errors.push(`${p.id}: no seat for ${b.place}/${b.kind}`);}
-const used=new Map();for(const p of TEAM){for(const b of planFor(p)){const key=seatKey(seats.get(p.id),b);if(key.startsWith('parking'))continue;for(let m=b.start;m<b.end;m+=1){const k=`${key}@${m}`;if(used.has(k)&&used.get(k)!==p.id&&!key.startsWith('dc'))errors.push(`seat clash ${key} at ${fmt(m)}: ${used.get(k)} & ${p.id}`);used.set(k,p.id);}}}
+const errors=[],world=buildWorld(new THREE.Scene());
+// Every desk seat the team editor offers must exist in the 3D office.
+for(const s of SEATS)if(!world.spots.get(s.key))errors.push(`seat ${s.key} missing in rooms.js`);
+for(const e of validateTeam(normalizeTeam(DEFAULT_TEAM)))errors.push(`default team: ${e}`);
+// A full office: every desk taken, 15 men (one imam) and 11 women, all capacity limits at their maximum.
+function maxTeam(){
+  const people=SEATS.map((s,i)=>({id:`p${i}`,name:`Orang ${i}`,short:`P${i}`,roleId:DEFAULT_ROLES[i%DEFAULT_ROLES.length].id,gender:i<15?'L':'P',seat:s.key,
+    coffee:i<12?'A':i<24?'B':'none',lunch:i<4?'sport':i<8?'lobby':i<20?'pantry':'desk',meeting:false,onCall:s.key==='dc:0',imam:i===0,offset:i%16}));
+  const meetingSeats=CAPACITY.war-people.filter(p=>p.seat.startsWith('war:')).length;people.filter(p=>!p.seat.startsWith('war:')).slice(0,meetingSeats).forEach(p=>p.meeting=true);
+  return {roles:DEFAULT_ROLES,people};
+}
+const full=normalizeTeam(maxTeam());
+for(const e of validateTeam(full))errors.push(`max team: ${e}`);
+const overfull=normalizeTeam(maxTeam());overfull.people[20].gender='L';
+if(!validateTeam(overfull).some(e=>/Saf laki-laki penuh/.test(e)))errors.push('16 men should exceed the prayer rows');
+
 // Walls: a route may only enter or leave a walled room (or the sport fence) through its door gap.
 const rects=[...ROOMS.filter(r=>r.w),{id:'sport',x:19,z:8,w:25,d:11,doors:[{side:'back',at:-10}]}];
 const roomAt=(x,z)=>rects.find(r=>Math.abs(x-r.x)<r.w/2-.03&&Math.abs(z-r.z)<r.d/2-.03)||null;
 const nearDoor=(r,x,z)=>r.doors.some(d=>{const dz=r.z+(d.side==='front'?r.d/2:-r.d/2);return Math.abs(x-(r.x+d.at))<.66&&Math.abs(z-dz)<.35;});
 let routes=0,longest=0;
-for(const p of TEAM){const plan=planFor(p);for(let i=1;i<plan.length;i++){
-  const a=world.spots.get(seatKey(seats.get(p.id),plan[i-1])),b=world.spots.get(seatKey(seats.get(p.id),plan[i]));if(a.key===b.key)continue;
-  const r=world.nav.route(a,b);routes++;longest=Math.max(longest,r.length);
-  let prev=roomAt(r.points[0][0],r.points[0][1]);const visited=new Set();
-  for(let d=0;d<=r.length;d+=.05){const s=sampleRoute(r,d),cur=roomAt(s.x,s.z);if(cur)visited.add(cur.id);
-    if(cur!==prev){const room=cur||prev;if(!nearDoor(room,s.x,s.z)){errors.push(`${p.id} ${fmt(plan[i].start)} ${a.key}→${b.key} crosses ${room.id} wall at ${s.x.toFixed(2)},${s.z.toFixed(2)}`);break;}prev=cur;}}
-  for(const id of visited)if(id!==a.roomId&&id!==b.roomId)errors.push(`${p.id} ${a.key}→${b.key} passes through ${id}`);
-}}
-// Arrival before iqamah at simulated walking speed (8 m per simulated minute).
-for(const pr of Object.values(PRAYERS))for(const p of TEAM){const plan=planFor(p),i=plan.findIndex(b=>b.prayer===pr.id);if(i<0)continue;const a=world.spots.get(seatKey(seats.get(p.id),plan[i-1])),b=world.spots.get(seatKey(seats.get(p.id),plan[i]));const arrive=plan[i].start+world.nav.route(a,b).length/8;if(arrive>pr.iqamah)errors.push(`${p.id} late for ${pr.name}: ${fmt(arrive)}`);}
-document.querySelector('#result').textContent=`${errors.length?'GAGAL':'LULUS'} · ${routes} jalur dicek · terpanjang ${longest.toFixed(1)} m`;
+function check(team,tag){
+  setTeam(team);const seats=seatPlan(team);
+  for(const p of team)for(const b of planFor(p)){if(!(b.end>b.start))errors.push(`${tag} ${p.id}: empty block at ${fmt(b.start)}`);if(!world.spots.get(seatKey(seats.get(p.id),b)))errors.push(`${tag} ${p.id}: no seat for ${b.place}/${b.kind}`);}
+  const used=new Map();for(const p of team){for(const b of planFor(p)){const key=seatKey(seats.get(p.id),b);if(key.startsWith('parking'))continue;for(let m=b.start;m<b.end;m+=1){const k=`${key}@${m}`;if(used.has(k)&&used.get(k)!==p.id&&!key.startsWith('dc'))errors.push(`${tag} seat clash ${key} at ${fmt(m)}: ${used.get(k)} & ${p.id}`);used.set(k,p.id);}}}
+  for(const p of team){const plan=planFor(p);for(let i=1;i<plan.length;i++){
+    const a=world.spots.get(seatKey(seats.get(p.id),plan[i-1])),b=world.spots.get(seatKey(seats.get(p.id),plan[i]));if(a.key===b.key)continue;
+    const r=world.nav.route(a,b);routes++;longest=Math.max(longest,r.length);
+    let prev=roomAt(r.points[0][0],r.points[0][1]);const visited=new Set();
+    for(let d=0;d<=r.length;d+=.05){const s=sampleRoute(r,d),cur=roomAt(s.x,s.z);if(cur)visited.add(cur.id);
+      if(cur!==prev){const room=cur||prev;if(!nearDoor(room,s.x,s.z)){errors.push(`${tag} ${p.id} ${fmt(plan[i].start)} ${a.key}→${b.key} crosses ${room.id} wall at ${s.x.toFixed(2)},${s.z.toFixed(2)}`);break;}prev=cur;}}
+    for(const id of visited)if(id!==a.roomId&&id!==b.roomId)errors.push(`${tag} ${p.id} ${a.key}→${b.key} passes through ${id}`);
+  }}
+  // Arrival before iqamah at simulated walking speed (8 m per simulated minute).
+  for(const pr of Object.values(PRAYERS))for(const p of team){const plan=planFor(p),i=plan.findIndex(b=>b.prayer===pr.id);if(i<0)continue;const a=world.spots.get(seatKey(seats.get(p.id),plan[i-1])),b=world.spots.get(seatKey(seats.get(p.id),plan[i]));const arrive=plan[i].start+world.nav.route(a,b).length/8;if(arrive>pr.iqamah)errors.push(`${tag} ${p.id} late for ${pr.name}: ${fmt(arrive)}`);}
+}
+check(resolveTeam(full),'max');
+check(TEAM,'default');
+
+// Timetable of the default team.
+const times=[...new Set(TEAM.flatMap(p=>planFor(p).map(b=>b.start)))].sort((a,b)=>a-b);
+document.querySelector('#table').innerHTML=`<tr><th>Jam</th>${TEAM.map(p=>`<th>${p.short}<br><small>${p.role}</small></th>`).join('')}</tr>`+times.map(t=>`<tr><td>${fmt(t)}</td>${TEAM.map(p=>{const b=planFor(p).find(b=>b.start===t);return `<td class="${b?.kind||''}">${b?b.label:''}</td>`;}).join('')}</tr>`).join('');
+document.querySelector('#result').textContent=`${errors.length?'GAGAL':'LULUS'} · ${routes} jalur dicek (tim default + tim penuh ${full.people.length} orang) · terpanjang ${longest.toFixed(1)} m`;
 document.querySelector('#result').className=errors.length?'failed':'passed';document.querySelector('#errors').textContent=errors.join('\n');
 document.body.dataset.tests=errors.length?'failed':'passed';document.body.dataset.errors=JSON.stringify(errors);
 </script></html>
