@@ -5,7 +5,7 @@ export const DEFAULT_RULES = [
   { id: 'leave', enabled: true, pattern: '\\b(izin|ijin)\\s+(sakit|cuti|tidak masuk|ga masuk|gak masuk|nggak masuk)\\b|\\bcuti hari ini\\b|\\bsick leave\\b', kind: 'leave', place: 'parking', room: null, label: '🏠 Izin / cuti hari ini', minutes: 'endOfDay' },
   { id: 'deploy', enabled: true, pattern: '\\bdeploy(ing)?\\s+(ke\\s+)?(prod|production)\\b|\\brilis\\s+(ke\\s+)?prod', kind: 'intent', place: null, room: 'dc', label: '🚀 Deploy ke production', minutes: 10 },
 ];
-export const DEFAULT_PRIVACY = { showText: false, maskNumbers: true, retentionHours: 24 };
+export const DEFAULT_PRIVACY = { showText: true, maskNumbers: true, retentionHours: 24 };
 export const PLACES = ['meeting', 'pantry', 'parking', 'desk', null];
 
 // team() returns the current (resolved) team; contact mappings exist only for people in it.
@@ -36,7 +36,7 @@ export function createSettings(db, team) {
       const next = get('groups');
       for (const [jid, g] of Object.entries(patch.groups)) {
         if (!jid.endsWith('@g.us')) throw new Error(`bukan grup: ${jid}`);
-        next[jid] = { name: String(g.name ?? next[jid]?.name ?? jid).slice(0, 80), enabled: Boolean(g.enabled), room: g.room || null };
+        next[jid] = { name: String(g.name ?? next[jid]?.name ?? jid).slice(0, 80), enabled: Boolean(g.enabled), room: g.room || null, showText: Boolean(g.showText ?? next[jid]?.showText ?? true) };
       }
       db.setSetting('groups', next);changed.push('groups');
     }

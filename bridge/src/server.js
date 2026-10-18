@@ -122,7 +122,7 @@ export async function startBridge(overrides = {}) {
   });
   await new Promise(r => server.listen(config.port, r));
   const stop = () => new Promise(r => { clearInterval(poll); events.stop(); stream.close(); server.close(() => { db.close(); r(); }); });
-  return { server, stop, port: server.address().port, events, settings };
+  return { server, stop, port: server.address().port, events, settings, db };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

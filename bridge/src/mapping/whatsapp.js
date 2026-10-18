@@ -2,6 +2,8 @@ import { jidUser } from '../adapters/gowa.js';
 import { normalizePhone } from '../settings.js';
 
 const MIN = 60_000;
+const MEDIA = { image: '📷 gambar', video: '🎬 video', audio: '🎤 pesan suara', document: '📄 dokumen', sticker: '🙂 stiker', location: '📍 lokasi', contact: '👤 kontak' };
+const mediaOf = p => Object.keys(MEDIA).find(k => p[k]);
 // End of today in Jakarta (UTC+7, no DST).
 export function endOfDayWib(t) { const off = 7 * 3_600_000, day = 86_400_000; return Math.floor((t + off) / day) * day + day - off - 1; }
 
@@ -22,6 +24,15 @@ export function createWhatsAppMapper({ settings, events, onStatus = () => {}, no
   }
   function remember(map, key, value, limit = 500) { map.delete(key); map.set(key, value); if (map.size > limit) map.delete(map.keys().next().value); }
 
+  // Pop-up bubble with the message itself, shown for 8 seconds and never written to SQLite.
+  function bubble(p, group, person) {
+    const t = now(), text = String(p.body || '').replace(/\s+/g, ' ').trim(), media = mediaOf(p);
+    const allowed = settings.get('privacy').showText && group.showText !== false;
+    const label = !allowed ? '💬 mengirim pesan' : text ? (text.length > 80 ? text.slice(0, 79) + '…' : text) : media ? `${MEDIA[media]}` : '💬 pesan';
+    const sender = person ? null : String(p.sender_display_name || p.from_name || 'Anggota grup').slice(0, 40);
+    events.put({ id: `wa:bubble:${p.id || t}`, person, source: 'whatsapp', kind: 'bubble', label, room: group.room || (person ? null : 'lobby'), until: t + 8_000,
+      meta: { group: p.chat_id, groupName: group.name, ...(sender && { sender }), ...(media && { media }) } }, { persist: false });
+  }
   function handle(body) {
     const { event, payload: p = {} } = body || {};
     lastEventAt = now();onStatus({ lastEventAt });
@@ -32,7 +43,7 @@ export function createWhatsAppMapper({ settings, events, onStatus = () => {}, no
     if (!group?.enabled) return { action: 'ignored', reason: 'group-disabled' };
     if (p.is_from_me) return { action: 'ignored', reason: 'own-message' };
     const person = personFor(p);
-    if (!person) { remember(unmapped, p.from_lid || p.from, { jid: p.from || '', lid: p.from_lid || '', name: p.sender_display_name || p.from_name || '', group: group.name, at: now() }, 100); return { action: 'ignored', reason: 'unmapped' }; }
+    if (!person) { if (event === 'message') bubble(p, group, null);remember(unmapped, p.from_lid || p.from, { jid: p.from || '', lid: p.from_lid || '', name: p.sender_display_name || p.from_name || '', group: group.name, at: now() }, 100); return { action: 'ignored', reason: 'unmapped' }; }
     const t = now(), base = { person, source: 'whatsapp', room: group.room, meta: { group: p.chat_id, groupName: group.name } };
 
     if (event === 'chat_presence') {
@@ -43,10 +54,10 @@ export function createWhatsAppMapper({ settings, events, onStatus = () => {}, no
     // message
     events.remove(`wa:typing:${person}`);
     const text = String(p.body || '');
-    const privacy = settings.get('privacy');
-    const media = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact'].find(k => p[k]);
-    const snippet = privacy.showText && text ? `: "${text.slice(0, 50)}${text.length > 50 ? '…' : ''}"` : media ? ` (${media})` : '';
-    events.put({ ...base, id: `wa:chat:${person}`, kind: 'chat', label: `💬 Chat di ${group.name}${snippet}`, until: t + 2 * MIN });
+    const media = mediaOf(p);
+    // The 2-minute status never carries message text (it is stored); the 8-second bubble may (it is not).
+    events.put({ ...base, id: `wa:chat:${person}`, kind: 'chat', label: `💬 Chat di ${group.name}${media ? ` (${MEDIA[media]})` : ''}`, until: t + 2 * MIN });
+    bubble(p, group, person);
     const results = { action: 'chat', person };
     if (p.replied_to_id && senders.has(p.replied_to_id)) {
       const to = senders.get(p.replied_to_id);

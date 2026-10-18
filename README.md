@@ -98,11 +98,12 @@ Then, in the office:
 
 How messages become activity:
 
-- Typing → phone in hand and "✍️ Mengetik di <grup>"; a message → "💬 Chat di <grup>" for 2 minutes. Chat never moves anyone.
+- Every message pops a **chat bubble** for 8 seconds above the sender, with the sender, group and the start of the message (up to 80 characters). It is visible at every zoom level, and the newest bubble is on top. Messages from members not yet mapped to a person pop up above the group's room with their WhatsApp name. Message text travels only in this short-lived bubble: it is never written to the database, and it can be turned off globally (Privasi) or per group (Grup WA → Isi pesan).
+- Typing → phone in hand and "✍️ Mengetik di <grup>"; a message also sets "💬 Chat di <grup>" for 2 minutes. Chat never moves anyone.
 - A reply draws an arcing beam from the replier to the person replied to.
 - Three or more people talking in a group within 10 minutes lights up that group's room ("🔥 Diskusi aktif").
 - Keyword rules move people or set a status: `rapat sekarang` → War Room (30 min), `otw ngopi` → Pantry (15 min), `izin sakit` / `cuti` → away until end of day, `deploy prod` → status. Prayer times still win unless someone is on leave.
-- Privacy defaults: message text is never stored and not shown (opt-in snippets), derived activity is kept 24 hours, numbers are masked in lists, and settings changes are written to an audit log.
+- Privacy defaults: message text is never stored (bubbles only), derived activity is kept 24 hours, numbers are masked in lists, and settings changes are written to an audit log.
 
 The mode button cycles **⏩ Simulasi → 🕐 Jam nyata → 🟢 Live**. Without a bridge (plain static hosting) the office stays simulated and hides ⚙️. GOWA uses the unofficial WhatsApp Web protocol: use a dedicated number.
 

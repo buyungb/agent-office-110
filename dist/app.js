@@ -279,11 +279,11 @@ function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=n
   updateReplyLines(t);
   const occupied=new Set(people.filter(p=>!p.state.walking&&p.rig.root.visible).map(p=>p.state.to.key));
   for(const a of world.animators)a(t,dt,c);world.sportTick(t,occupied);
-  if(now-lastHud>250){lastHud=now;updateHud(c,t);if($('#agentDialog').open)fillModal();}
+  if(now-lastHud>250){lastHud=now;updateHud(c,t);expireBubbles();if($('#agentDialog').open)fillModal();}
   if(transition){const k0=Math.min(1,(now-transition.time)/transition.duration),k=1-Math.pow(1-k0,3);camera.position.lerpVectors(transition.from,transition.to,k);controls.target.lerpVectors(transition.start,transition.target,k);camera.zoom=THREE.MathUtils.lerp(transition.zoomFrom,transition.zoomTo,k);camera.updateProjectionMatrix();if(k0===1)transition=null;}
   controls.update();
   const overview=camera.zoom<1.8;$('#labels').classList.toggle('overview',overview);
-  for(const l of tracked){projected.copy(l.point).project(camera);const x=(projected.x*.5+.5)*view.w,y=(-projected.y*.5+.5)*view.h;const outside=projected.z>1||x<-200||x>view.w+200||y<-100||y>view.h+100;l.el.hidden=outside;l.el.style.display=outside?'none':'';if(!outside){l.el.style.transform=`translate(-50%,-100%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;l.el.style.zIndex=String(Math.round((1-projected.z)*1000)+(l.agent?2:0));l.el.classList.toggle('faded',selected!=='all'&&l.room!==selected);}}
+  for(const l of tracked){projected.copy(l.point).project(camera);const x=(projected.x*.5+.5)*view.w,y=(-projected.y*.5+.5)*view.h;const outside=projected.z>1||x<-200||x>view.w+200||y<-100||y>view.h+100;l.el.hidden=outside;l.el.style.display=outside?'none':'';if(!outside){l.el.style.transform=`translate(-50%,-100%) translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;l.el.style.zIndex=String(Math.round((1-projected.z)*1000)+(l.agent?2:0)+(l.el.classList.contains('has-bubble')?2000+Number(l.el.dataset.bubble):0));l.el.classList.toggle('faded',selected!=='all'&&l.room!==selected);}}
   // Moving people need fresher shadows than a still office.
   const walking=people.some(p=>p.state.walking);
   if(now-lastShadow>(walking?250:1500)){renderer.shadowMap.needsUpdate=true;lastShadow=now;}renderer.render(scene,camera);
@@ -300,7 +300,24 @@ renderer.shadowMap.needsUpdate=true;renderer.render(scene,camera);$('#loading').
 // Rebuild people only when the saved team actually differs from what is on screen (also after an SSE reconnect).
 let appliedTeam=JSON.stringify(live.team);
 function syncTeam(arrive){const json=JSON.stringify(live.team);if(!live.team||json===appliedTeam)return;appliedTeam=json;buildPeople(liveTeam(),{arrive});}
-live.onChange=type=>{if(type==='team'||type==='snapshot')syncTeam(type==='team');
+// WhatsApp chat bubbles live inside the person's (or the group room's) label so they move with it.
+// One bubble per anchor: a newer message replaces the older one; each lasts until the event's end.
+const bubbles=new Map();let bubbleSeq=0;
+function showBubble(e){
+  if(mode!=='live')return;
+  const person=e.person&&byPersonId.get(e.person),host=person?person.label:roomLabels[e.room];if(!host)return;
+  const key=person?`p:${person.id}`:`r:${e.room}`;bubbles.get(key)?.el.remove();
+  const el=document.createElement('span');el.className='chat-bubble';el.style.setProperty('--c',hex(person?person.color:byId[e.room]?.accent??0x52e0ff));
+  const from=document.createElement('b');from.textContent=person?person.short:e.meta?.sender||'Anggota grup';
+  const group=document.createElement('small');group.textContent=e.meta?.groupName?`· ${e.meta.groupName}`:'';
+  const text=document.createElement('span');text.className='txt';text.textContent=e.label;
+  el.append(from,group,text);host.append(el);host.classList.add('has-bubble');host.dataset.bubble=String(++bubbleSeq%1000);
+  bubbles.set(key,{el,host,until:e.until});
+  while(bubbles.size>10){const [k,b]=bubbles.entries().next().value;b.el.remove();b.host.classList.remove('has-bubble');bubbles.delete(k);}
+}
+function expireBubbles(){const now=Date.now();for(const [k,b] of bubbles){if(mode!=='live'||now>=b.until){b.el.remove();b.host.classList.remove('has-bubble');bubbles.delete(k);}else if(b.until-now<600)b.el.classList.add('leaving');}}
+live.onChange=(type,data)=>{if(type==='team'||type==='snapshot')syncTeam(type==='team');
+  if(type==='activity'&&data?.kind==='bubble')showBubble(data);
   if(type==='mode'&&!params.get('mode')&&!stored&&live.mode.default==='live'&&mode==='sim')setMode('live',false);if($('#agentDialog').open)fillModal();};
 started.then(()=>{if(!live.available){if(mode==='live')setMode('sim',false);return;}
   syncTeam(false);

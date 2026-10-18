@@ -54,9 +54,9 @@ export function initSettings({live,team,rooms,onModeDefault}){
   }
   function viewGroups(){
     const groups=Object.entries(st.data.groups);
-    const rows=groups.map(([jid,g])=>`<tr><td><label class="check"><input type="checkbox" data-group="${esc(jid)}" data-field="enabled" ${g.enabled?'checked':''}> ${esc(g.name)}</label></td><td><select data-group="${esc(jid)}" data-field="room">${roomOptions(g.room)}</select></td></tr>`).join('');
-    return `<p class="note">Hanya grup yang dicentang yang dibaca. Ruangan yang dipilih menyala saat ada diskusi aktif (≥3 orang dalam 10 menit).</p>
-      ${groups.length?`<table class="map"><thead><tr><th>Grup</th><th>Ruangan</th></tr></thead><tbody>${rows}</tbody></table><button class="primary" data-act="save-groups">Simpan</button>`:'<p class="note">Belum ada grup. Login WhatsApp lalu klik "Sinkronkan grup".</p>'}`;
+    const rows=groups.map(([jid,g])=>`<tr><td><label class="check"><input type="checkbox" data-group="${esc(jid)}" data-field="enabled" ${g.enabled?'checked':''}> ${esc(g.name)}</label></td><td><select data-group="${esc(jid)}" data-field="room">${roomOptions(g.room)}</select></td><td><input type="checkbox" data-group="${esc(jid)}" data-field="showText" ${g.showText!==false?'checked':''} aria-label="Tampilkan isi pesan ${esc(g.name)}"></td></tr>`).join('');
+    return `<p class="note">Hanya grup yang dicentang yang dibaca. Ruangan yang dipilih menyala saat ada diskusi aktif (≥3 orang dalam 10 menit), dan menjadi tempat bubble pesan dari anggota yang belum dipetakan. "Isi pesan" menampilkan potongan pesan di bubble.</p>
+      ${groups.length?`<table class="map"><thead><tr><th>Grup</th><th>Ruangan</th><th>Isi pesan</th></tr></thead><tbody>${rows}</tbody></table><button class="primary" data-act="save-groups">Simpan</button>`:'<p class="note">Belum ada grup. Login WhatsApp lalu klik "Sinkronkan grup".</p>'}`;
   }
   function viewRules(){
     const rows=st.data.rules.map((r,i)=>`<div class="rule" data-rule="${i}"><div class="row"><label class="check"><input type="checkbox" data-field="enabled" ${r.enabled?'checked':''}> aktif</label><input data-field="label" value="${esc(r.label)}" maxlength="60" aria-label="Label"><button type="button" class="danger small" data-act="del-rule" data-id="${i}">✕</button></div>
@@ -68,7 +68,7 @@ export function initSettings({live,team,rooms,onModeDefault}){
   }
   function viewPrivacy(){
     const p=st.data.privacy;
-    return `<form class="stack" data-form="privacy"><label class="check"><input type="checkbox" name="showText" ${p.showText?'checked':''}> Tampilkan potongan isi pesan di gelembung (default mati)</label>
+    return `<form class="stack" data-form="privacy"><label class="check"><input type="checkbox" name="showText" ${p.showText?'checked':''}> Tampilkan isi pesan di bubble (bisa dimatikan per grup; teks tidak disimpan)</label>
       <label class="check"><input type="checkbox" name="maskNumbers" ${p.maskNumbers?'checked':''}> Samarkan nomor di daftar pengirim</label>
       <label>Simpan aktivitas selama (jam)<input name="retentionHours" type="number" min="1" max="720" value="${p.retentionHours}"></label>
       <label>Mode default untuk pengunjung<select name="mode"><option value="live" ${st.data.mode.default==='live'?'selected':''}>🟢 Live</option><option value="sim" ${st.data.mode.default==='sim'?'selected':''}>⏩ Simulasi</option></select></label>

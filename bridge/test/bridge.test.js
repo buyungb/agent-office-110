@@ -199,3 +199,36 @@ test('reset restores the default team', async () => {
   const t = await teamNow();
   assert.equal(t.people.length, 14);assert.equal(t.people.find(p => p.id === 'arka').name, 'Arka');
 });
+
+// ---- Chat bubbles ----
+test('a message pops a bubble with its text that is never written to SQLite', async () => {
+  await api('PUT', '/api/settings', { people: { arka: { waPhone: '628111' } }, groups: { [GROUP]: { name: 'APLINDO Dev', enabled: true, room: 'trading', showText: true } }, privacy: { showText: true } });
+  const m = msg('628111', '  Eval   RAG <b>naik</b> 4%\nsiap rilis  ');
+  await hook(m);
+  const bubble = (await eventsNow()).find(e => e.id === `wa:bubble:${m.payload.id}`);
+  assert.equal(bubble.kind, 'bubble');assert.equal(bubble.person, 'arka');assert.equal(bubble.room, 'trading');
+  assert.equal(bubble.label, 'Eval RAG <b>naik</b> 4% siap rilis');
+  assert.ok(bubble.until - bubble.start <= 8_000);
+  assert.ok(!bridge.db.activeEvents(Date.now()).some(e => e.kind === 'bubble'), 'bubble must not be persisted');
+  assert.ok(bridge.db.activeEvents(Date.now()).some(e => e.id === 'wa:chat:arka'), 'status event is still persisted');
+});
+
+test('unknown senders get a bubble at the group room with their WhatsApp name only', async () => {
+  const m = msg('628777', 'halo semua', { sender_display_name: 'Pak Budi (klien)' });
+  assert.equal((await hook(m)).body.reason, 'unmapped');
+  const bubble = (await eventsNow()).find(e => e.id === `wa:bubble:${m.payload.id}`);
+  assert.equal(bubble.person, null);assert.equal(bubble.room, 'trading');assert.equal(bubble.meta.sender, 'Pak Budi (klien)');
+  assert.doesNotMatch(JSON.stringify(bubble), /628777/);
+});
+
+test('message text is hidden when the group or the privacy switch says so', async () => {
+  await api('PUT', '/api/settings', { groups: { [GROUP]: { name: 'APLINDO Dev', enabled: true, room: 'trading', showText: false } } });
+  let m = msg('628111', 'rahasia klien');await hook(m);
+  assert.equal((await eventsNow()).find(e => e.id === `wa:bubble:${m.payload.id}`).label, '💬 mengirim pesan');
+  await api('PUT', '/api/settings', { groups: { [GROUP]: { name: 'APLINDO Dev', enabled: true, room: 'trading', showText: true } }, privacy: { showText: false } });
+  m = msg('628111', 'rahasia lagi');await hook(m);
+  assert.equal((await eventsNow()).find(e => e.id === `wa:bubble:${m.payload.id}`).label, '💬 mengirim pesan');
+  await api('PUT', '/api/settings', { privacy: { showText: true } });
+  m = msg('628111', '', { image: { caption: '' } });await hook(m);
+  assert.equal((await eventsNow()).find(e => e.id === `wa:bubble:${m.payload.id}`).label, '📷 gambar');
+});
