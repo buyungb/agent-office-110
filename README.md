@@ -47,6 +47,7 @@ People walk between rooms along the corridors and through door gaps. Prayers use
 - Left/middle drag: pan. Right drag: orbit. Wheel: zoom.
 - Touch: one finger to pan; two fingers to zoom and rotate.
 - Arrow keys: pan. Toolbar: zoom, rotate, reset.
+- 🏷️ (or the **L** key) cycles the labels above heads: full → name only → hidden. The choice is remembered per browser; `?labels=all|name|off` forces one (handy for a TV screen). WhatsApp chat bubbles still appear when labels are hidden.
 - Room buttons: smooth camera focus. Tap a person (label or body) for status, next activity and today's timetable.
 
 The displayed metrics and activity are sample data, not a connection to live infrastructure.

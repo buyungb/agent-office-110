@@ -28,7 +28,8 @@
     <nav class="panel tabs" id="tabs" aria-label="Pilih ruangan"></nav>
     <div class="toolbar"><button class="panel demo" id="mode" aria-pressed="false">⏩ Simulasi</button><button class="panel demo" id="settingsBtn" hidden aria-expanded="false" aria-controls="settings" title="Setting koneksi WhatsApp, pemetaan orang, aturan dan privasi">⚙️</button></div>
   </header>
-  <div class="camera-tools panel" aria-label="Kontrol kamera"><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="rotate" aria-label="Putar kamera">↻</button><button id="reset" aria-label="Reset kamera">⌂</button></div>
+  <div class="camera-tools panel" aria-label="Kontrol kamera"><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="rotate" aria-label="Putar kamera">↻</button><button id="reset" aria-label="Reset kamera">⌂</button><button id="labelsBtn" aria-label="Label di atas kepala: lengkap" title="Label di atas kepala: lengkap (tombol L)">🏷️</button></div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
   <footer class="panel legend"><span><i class="dot working"></i>Kerja</span><span><i class="dot recent"></i>Ngopi / istirahat</span><span><i class="dot prayer"></i>Sholat</span><span><i class="dot walking"></i>Di jalan</span><span><i class="dot offline"></i>Offline</span><span class="hint">· seret = geser · klik kanan seret = putar · scroll = zoom · klik orang / papan produk = detail</span></footer>
   <div class="panel data-note"><span class="tiny-dot"></span><span id="dataNote">Data contoh · simulasi lokal</span></div>
   <aside class="panel drawer" id="settings" hidden aria-label="Setting kantor"></aside>

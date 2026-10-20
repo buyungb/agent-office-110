@@ -114,6 +114,21 @@ function focusRoom(id,immediate=false){const r=byId[id];if(!r)return;selected=id
 controls.addEventListener('start',()=>{transition=null;});
 $('#stage').addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('resize',resize);addEventListener('orientationchange',()=>setTimeout(resize,250));window.visualViewport?.addEventListener('resize',resize);if(window.ResizeObserver)new ResizeObserver(resize).observe($('#stage'));
+// Labels above heads: full (status + name) → name only → hidden. Chat bubbles still pop up in every mode.
+const LABEL_MODES={all:'Lengkap',name:'Nama saja',off:'Sembunyikan'};
+let labelMode='all';try{labelMode=localStorage.getItem('office-labels')||'all';}catch{}
+if(LABEL_MODES[params.get('labels')])labelMode=params.get('labels');if(!LABEL_MODES[labelMode])labelMode='all';
+let toastTimer=null;
+function toast(text){const el=$('#toast');el.textContent=text;el.hidden=false;el.classList.remove('show');void el.offsetWidth;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true;},1400);}
+function setLabelMode(next,announce=true){
+  labelMode=next;$('#labels').dataset.labels=next;try{localStorage.setItem('office-labels',next);}catch{}
+  const text=`Label di atas kepala: ${LABEL_MODES[next].toLowerCase()}`;$('#labelsBtn').setAttribute('aria-label',text);$('#labelsBtn').title=`${text} (tombol L)`;$('#labelsBtn').setAttribute('aria-pressed',next!=='all');
+  if(announce)toast(`🏷️ Label: ${LABEL_MODES[next]}`);
+}
+const nextLabelMode=()=>{const order=Object.keys(LABEL_MODES);setLabelMode(order[(order.indexOf(labelMode)+1)%order.length]);};
+$('#labelsBtn').onclick=nextLabelMode;
+setLabelMode(labelMode,false);
+addEventListener('keydown',e=>{if((e.key==='l'||e.key==='L')&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!$('#agentDialog').open&&$('#settings').hidden&&!e.target.closest?.('input,textarea,select,[contenteditable]')){nextLabelMode();}});
 addEventListener('keydown',e=>{if($('#agentDialog').open||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();transition=null;const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0),up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);const delta=(e.key==='ArrowLeft'?right.multiplyScalar(-1):e.key==='ArrowRight'?right:e.key==='ArrowDown'?up.multiplyScalar(-1):up).multiplyScalar(1.5/camera.zoom);camera.position.add(delta);controls.target.add(delta);});
 $('#zoomIn').onclick=()=>{transition=null;camera.zoom=Math.min(8,camera.zoom*1.25);camera.updateProjectionMatrix();};
 $('#zoomOut').onclick=()=>{transition=null;camera.zoom=Math.max(.45,camera.zoom/1.25);camera.updateProjectionMatrix();};
