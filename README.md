@@ -41,6 +41,8 @@ People walk between rooms along the corridors and through door gaps. Prayers use
 - `?t=12:00` or `?t=12:00:34` pins the simulated clock (useful for screenshots); add `&run` to let it continue from there.
 - `?mode=real` starts in real WIB time.
 - `?nav` draws the corridor graph and every seat.
+- `?brand=orangpinter` switches the signage, HUD, title and favicon to another preset in `dist/brand.js` (default APLINDO).
+- `?promo` hides the HUD, `?dpr=2` renders a sharper canvas, and `?debug` exposes `window.__office` for tests and the promo video harness (`promo/README.md`).
 
 ## Controls
 

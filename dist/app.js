@@ -7,6 +7,7 @@ import { TEAM, PRODUCTS, normalizeTeam, resolveTeam } from './team.js';
 import { PRAYERS, KIND_LABELS, activityAt, planFor, simRate, wibNow, fmt, parseTime, seatPlan, seatKey, setTeam } from './schedule.js';
 import { sampleRoute } from './nav.js';
 import { createLive, pickOverride, pickOverlay } from './live.js';
+import { pickBrand } from './brand.js';
 import { initSettings } from './settings.js';
 
 // All models and textures are generated locally. No backend calls; activity and PnL are sample data.
@@ -14,7 +15,9 @@ const $ = (q) => document.querySelector(q);
 const scene = new THREE.Scene();
 let renderer;
 try {renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(error){$('#loading').remove();$('#error').hidden=false;$('#errorMessage').textContent='WebGL tidak tersedia. Aktifkan akselerasi grafis di browser lalu coba lagi.';throw error;}
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+// ?dpr=2 renders sharper frames for promo video; normal viewers stay at ≤ 1.5 for speed.
+const dprParam=Number(new URLSearchParams(location.search).get('dpr'));
+renderer.setPixelRatio(Math.min(devicePixelRatio,dprParam>0?Math.min(dprParam,3):1.5));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate=false;
@@ -33,7 +36,12 @@ camera.position.copy(defaultOffset);
 controls.target.set(0,0,0);
 controls.update();
 
-const world=buildWorld(scene);
+// Brand on signage, HUD, title and favicon (?brand=orangpinter); ?promo hides the HUD for clean video shots.
+const BRAND=pickBrand();
+document.title=BRAND.title;$('.brand-mark').textContent=BRAND.mark;$('.brand h1').textContent=BRAND.hud;$('.brand-mark').style.color=BRAND.color;
+document.querySelector('link[rel=icon]').href=`data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect width='48' height='48' rx='12' fill='#0f1724'/><text x='24' y='34' text-anchor='middle' font-size='30' font-family='Georgia' fill='${BRAND.color}'>${BRAND.mark}</text></svg>`)}`;
+if(new URLSearchParams(location.search).has('promo'))document.body.classList.add('promo');
+const world=buildWorld(scene,{brand:BRAND});
 const byId=world.byId;
 const PRAYER=buildPrayer(4);
 const MAKMUM_DELAY=1.05;
@@ -59,7 +67,7 @@ if(params.has('nav')){
   for(const s of world.spots.values()){const m=new THREE.Mesh(new THREE.SphereGeometry(.08,6,4),new THREE.MeshBasicMaterial({color:0xfff23d}));m.position.set(s.x,FLOOR+.06,s.z);scene.add(m);}
 }
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let men=[],women=[],people=[],byPersonId=new Map();
+let men=[],women=[],people=[],byPersonId=new Map(),travelSpeed=1.35;// m/s for live walks
 const skins=[0xd5ab87,0xc99a72,0xe0b896,0xb8875f];
 // (Re)builds every person from a resolved team. Called at start and whenever ⚙️ → Tim saves a change.
 // People who stay keep their position; newcomers walk in from the car park; a changed desk means a walk to it.
@@ -97,7 +105,7 @@ function spotFor(person,block){
 const tracked=[];
 function label(text,x,y,z,accent,roomId,subtitle=''){const el=document.createElement('button');el.className='world-label room-label';el.style.setProperty('--accent',hex(accent??0x52e0ff));const b=document.createElement('b');b.textContent=text;el.append(b);const small=document.createElement('small');small.textContent=subtitle;small.hidden=!subtitle;el.append(small);el.addEventListener('click',()=>focusRoom(roomId));$('#labels').append(el);tracked.push({el,point:new THREE.Vector3(x,y,z),room:roomId});return el;}
 const roomLabels={};
-for(const r of ROOMS.slice(1))roomLabels[r.id]=label(`${r.icon} ${r.label||r.name}`,r.x,3.3,r.z-(r.d||8)/2,r.accent,r.id);
+for(const r of ROOMS.slice(1))roomLabels[r.id]=label(`${r.icon} ${r.id==='lobby'?`LOBBY ${BRAND.name.toUpperCase()}`:r.label||r.name}`,r.x,3.3,r.z-(r.d||8)/2,r.id==='lobby'?parseInt(BRAND.color.slice(1),16):r.accent,r.id);
 label('🅿️ PARKIR',-24.5,1,9,0x52e0ff,'all');
 roomLabels.mushola.querySelector('small').hidden=false;roomLabels.mushola.querySelector('small').textContent=`Dzuhur ${fmt(PRAYERS.dzuhur.iqamah)} · Ashar ${fmt(PRAYERS.ashar.iqamah)}`;
 let selected='all',transition=null,modal=null;
@@ -173,7 +181,7 @@ function updatePerson(p,c,t){
   if(!s.walking){
     if(p.lastKey&&p.lastKey!==s.to.key&&(s.live||p.lastLive))p.travel={route:world.nav.route(world.spots.get(p.lastKey),s.to),t0:t};
     p.lastKey=s.to.key;p.lastLive=Boolean(s.live);
-    if(p.travel){const walked=(t-p.travel.t0)*1.35;if(walked<p.travel.route.length){s.walking=true;s.route=p.travel.route;s.walked=walked;}else p.travel=null;}
+    if(p.travel){const walked=(t-p.travel.t0)*travelSpeed;if(walked<p.travel.route.length){s.walking=true;s.route=p.travel.route;s.walked=walked;}else p.travel=null;}
   }
   let pose,visible=true,attire=false;
   if(s.walking){
@@ -283,7 +291,10 @@ function updateReplyLines(t){
     segs.forEach((s,k)=>{point(k/segs.length,pA);point((k+1)/segs.length,pB);s.position.copy(pA);s.scale.set(1,pA.distanceTo(pB),1);s.quaternion.setFromUnitVectors(UP,pB.sub(pA).normalize());s.material.opacity=.45+.4*Math.max(0,Math.sin(t*6-k*.9));s.visible=true;});});
 }
 // ?debug exposes internals for browser tests.
-if(params.has('debug'))window.__office={people,live,replyBeams,world};
+// ?debug exposes internals for browser tests and the promo video harness (promo/capture.py).
+if(params.has('debug'))window.__office={people,live,replyBeams,world,rooms:byId,focusRoom,
+  setMinute:m=>{simMinute=m;},setTravelSpeed:v=>{travelSpeed=v;},
+  setCamera:(x,y,z,zoom,angle=0)=>{transition=null;const target=new THREE.Vector3(x,y,z),off=defaultOffset.clone().applyAxisAngle(new THREE.Vector3(0,1,0),angle);camera.position.copy(target).add(off);controls.target.copy(target);camera.zoom=zoom;camera.updateProjectionMatrix();controls.update();}};
 const projected=new THREE.Vector3();let lastShadow=0,lastFrame=null;
 function frame(now){requestAnimationFrame(frame);if(document.hidden){lastFrame=null;return;}
   const dt=lastFrame===null?0:Math.min((now-lastFrame)/1000,.1);lastFrame=now;const t=now/1000;

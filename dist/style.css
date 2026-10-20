@@ -78,3 +78,5 @@
 #toast{position:fixed;z-index:30;left:50%;bottom:110px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:12.5px;box-shadow:0 6px 18px #0006;pointer-events:none}
 #toast[hidden]{display:none}#toast.show{animation:toast 1.4s ease forwards}
 @keyframes toast{0%{opacity:0;transform:translateX(-50%) translateY(8px)}12%,75%{opacity:1;transform:translateX(-50%)}100%{opacity:0;transform:translateX(-50%)}}
+
+.promo .hud,.promo .legend,.promo .data-note,.promo .camera-tools,.promo #toast,.promo #prayerStatus{display:none!important}
